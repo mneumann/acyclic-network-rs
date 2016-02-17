@@ -1,0 +1,15 @@
+[package]
+name = "acyclic-network"
+version = "0.0.1"
+authors = ["Michael Neumann <mneumann@ntecs.de>"]
+license = "MIT"
+repository = "https://github.com/mneumann/acyclic-network-rs"
+description = "Acyclic network representation and construction"
+keywords = ["graph", "network", "net"]
+
+include = ["src/*.rs", "Cargo.toml", "LICENSE", "README.md"]
+
+[dependencies]
+
+rand = "0.3"
+fixedbitset = "0.1.0"
