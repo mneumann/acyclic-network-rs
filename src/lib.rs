@@ -16,7 +16,7 @@ pub trait NodeType {
 pub struct NodeIndex(usize);
 
 impl NodeIndex {
-    fn index(&self) -> usize {
+    pub fn index(&self) -> usize {
         self.0
     }
 }
