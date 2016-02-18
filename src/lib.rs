@@ -13,6 +13,7 @@ pub trait NodeType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// New type wrapping a node index.
 pub struct NodeIndex(usize);
 
 impl NodeIndex {
@@ -50,10 +51,7 @@ impl<NT: NodeType, N, W: Clone> Network<NT, N, W> {
         &self.nodes
     }
 
-    pub fn add_node(&mut self,
-                    node_type: NT,
-                    node_data: N)
-                    -> NodeIndex {
+    pub fn add_node(&mut self, node_type: NT, node_data: N) -> NodeIndex {
         let idx = NodeIndex(self.nodes.len());
         self.nodes.push(Node {
             node_type: node_type,
@@ -66,10 +64,9 @@ impl<NT: NodeType, N, W: Clone> Network<NT, N, W> {
 
     /// Returns a random link between two unconnected nodes, which would not introduce
     /// a cycle. Return None is no such exists.
-    pub fn find_random_unconnected_link_no_cycle<R: Rng>
-        (&self,
-         rng: &mut R)
-         -> Option<(NodeIndex, NodeIndex)> {
+    pub fn find_random_unconnected_link_no_cycle<R: Rng>(&self,
+                                                         rng: &mut R)
+                                                         -> Option<(NodeIndex, NodeIndex)> {
 
         let n = self.nodes.len();
 
@@ -118,28 +115,14 @@ impl<NT: NodeType, N, W: Clone> Network<NT, N, W> {
         return None;
     }
 
-    /// Returns true if the introduction of this directed link would lead towards a cycle.
-    pub fn link_would_cycle(&self,
-                            source_node_idx: NodeIndex,
-                            target_node_idx: NodeIndex)
-                            -> bool {
-        if source_node_idx == target_node_idx {
-            return true;
-        }
-
-        let mut seen_nodes = FixedBitSet::with_capacity(self.nodes.len());
-        let mut nodes_to_visit = Vec::new();
-
-        // We start at the target node and iterate all paths from there. If we hit the source node,
-        // we found a cycle. Otherwise not.
-        let start = target_node_idx.index();
-
-        // We are looking for a path to this node.
-        let path_to = source_node_idx.index();
-
-        nodes_to_visit.push(start);
-        seen_nodes.insert(start);
-
+    // The algorithm used in `link_would_cycle` and `find_random_unconnected_link_no_cycle`.  This
+    // is mostly extracted to avoid repetetive memory allocations in
+    // `find_random_unconnected_link_no_cycle`.
+    fn cycle_algo(&self,
+                  path_to: usize,
+                  nodes_to_visit: &mut Vec<usize>,
+                  seen_nodes: &mut FixedBitSet)
+                  -> bool {
         while let Some(visit_node) = nodes_to_visit.pop() {
             for out_link in &self.nodes[visit_node].output_links {
                 let next_node = out_link.node_idx.index();
@@ -159,6 +142,28 @@ impl<NT: NodeType, N, W: Clone> Network<NT, N, W> {
         return false;
     }
 
+    /// Returns true if the introduction of this directed link would lead towards a cycle.
+    pub fn link_would_cycle(&self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
+        if source_node_idx == target_node_idx {
+            return true;
+        }
+
+        let mut seen_nodes = FixedBitSet::with_capacity(self.nodes.len());
+        let mut nodes_to_visit = Vec::new();
+
+        // We start at the target node and iterate all paths from there. If we hit the source node,
+        // we found a cycle. Otherwise not.
+        let start = target_node_idx.index();
+
+        // We are looking for a path to this node.
+        let path_to = source_node_idx.index();
+
+        nodes_to_visit.push(start);
+        seen_nodes.insert(start);
+
+        self.cycle_algo(path_to, &mut nodes_to_visit, &mut seen_nodes)
+    }
+
     // Check if the link is valid. Doesn't check for cycles.
     pub fn valid_link(&self,
                       source_node_idx: NodeIndex,
@@ -173,17 +178,14 @@ impl<NT: NodeType, N, W: Clone> Network<NT, N, W> {
         }
 
         if !self.nodes[target_node_idx.index()].node_type.accept_incoming_links() {
-           return Err("Node does not allow incoming links");
+            return Err("Node does not allow incoming links");
         }
 
         Ok(())
     }
 
     // Note: Doesn't check for cycles (except in the simple reflexive case).
-    pub fn add_link(&mut self,
-                    source_node_idx: NodeIndex,
-                    target_node_idx: NodeIndex,
-                    weight: W) {
+    pub fn add_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex, weight: W) {
         if let Err(err) = self.valid_link(source_node_idx, target_node_idx) {
             panic!(err);
         }
@@ -208,20 +210,20 @@ mod tests {
     enum NodeT {
         Input,
         Hidden,
-        Output
+        Output,
     }
 
     impl NodeType for NodeT {
         fn accept_incoming_links(&self) -> bool {
             match *self {
                 NodeT::Input => false,
-                _ => true
+                _ => true,
             }
         }
         fn accept_outgoing_links(&self) -> bool {
             match *self {
                 NodeT::Output => false,
-                _ => true
+                _ => true,
             }
         }
     }
