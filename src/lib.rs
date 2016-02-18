@@ -62,7 +62,12 @@ impl<'a, NT: NodeType + 'a, N: 'a, W: Clone + 'a> CycleDetector<'a, NT, N, W> {
     // The algorithm used in `Network.link_would_cycle` and
     // `Network.find_random_unconnected_link_no_cycle`.  This is mostly extracted to avoid
     // repetetive memory allocations in `find_random_unconnected_link_no_cycle`.
-    fn detect_cycle(&mut self, path_from: usize, path_to: usize) -> bool {
+    fn link_would_cycle(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
+        let path_from = target_node_idx.index();
+        let path_to = source_node_idx.index();
+
+        assert!(path_from != path_to);
+
         let nodes = self.nodes;
         let mut nodes_to_visit = &mut self.nodes_to_visit;
         let mut seen_nodes = &mut self.seen_nodes;
@@ -73,8 +78,8 @@ impl<'a, NT: NodeType + 'a, N: 'a, W: Clone + 'a> CycleDetector<'a, NT, N, W> {
         }
         self.dirty = true;
 
-        // We start at the from this node and iterate all paths from there. If we hit the target node,
-        // we found a cycle. Otherwise not.
+        // We start at the from the target_node and iterate all paths from there. If we hit the source node,
+        // the addition of this link would lead towards a cycle. Otherwise not.
         nodes_to_visit.push(path_from);
         seen_nodes.insert(path_from);
 
@@ -142,7 +147,7 @@ impl<NT: NodeType, N, W: Clone> Network<NT, N, W> {
             }
         }
 
-        let adj_matrix = adj_matrix;
+        let adj_matrix = adj_matrix; // make immutable
 
         // We now test all potential links of every node in the graph, if it would
         // introduce a cycle. For that, we shuffle the node indices (`node_order`).
@@ -151,8 +156,9 @@ impl<NT: NodeType, N, W: Clone> Network<NT, N, W> {
         let mut edge_order: Vec<_> = (0..n).into_iter().collect();
         rng.shuffle(&mut node_order);
 
-        let node_order = node_order;
+        let node_order = node_order; // make immutable
 
+        let mut cycler = CycleDetector::new(self);
         for &i in &node_order {
             rng.shuffle(&mut edge_order);
             for &j in &edge_order {
@@ -160,7 +166,7 @@ impl<NT: NodeType, N, W: Clone> Network<NT, N, W> {
                     // The link (i, j) neither is reflexive, nor exists.
                     let ni = NodeIndex(i);
                     let nj = NodeIndex(j);
-                    if self.valid_link(ni, nj).is_ok() && !self.link_would_cycle(ni, nj) {
+                    if self.valid_link(ni, nj).is_ok() && !cycler.link_would_cycle(ni, nj) {
                         // If the link is valid and does not create a cycle, we are done!
                         return Some((ni, nj));
                     }
@@ -178,7 +184,7 @@ impl<NT: NodeType, N, W: Clone> Network<NT, N, W> {
             return true;
         }
 
-        CycleDetector::new(self).detect_cycle(target_node_idx.index(), source_node_idx.index())
+        CycleDetector::new(self).link_would_cycle(source_node_idx, target_node_idx)
     }
 
     // Check if the link is valid. Doesn't check for cycles.
