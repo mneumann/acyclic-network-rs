@@ -3,6 +3,7 @@ extern crate rand;
 
 use fixedbitset::FixedBitSet;
 use rand::Rng;
+use std::collections::BTreeMap;
 
 pub trait NodeType: Clone {
     /// If the node allows incoming connections
@@ -12,7 +13,7 @@ pub trait NodeType: Clone {
     fn accept_outgoing_links(&self) -> bool;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 /// New type wrapping a node index.
 pub struct NodeIndex(usize);
 
@@ -38,11 +39,6 @@ pub struct Node<NT: NodeType, N: Clone, W: Clone> {
     pub node_data: N,
     pub input_links: Vec<Link<W>>,
     pub output_links: Vec<Link<W>>,
-}
-
-#[derive(Clone)]
-pub struct Network<NT: NodeType, N: Clone, W: Clone> {
-    nodes: Vec<Node<NT, N, W>>,
 }
 
 struct CycleDetector<'a, NT: NodeType + 'a, N: Clone + 'a, W: Clone + 'a> {
@@ -104,6 +100,11 @@ impl<'a, NT: NodeType + 'a, N: Clone + 'a, W: Clone + 'a> CycleDetector<'a, NT, 
         // We haven't found a cycle.
         return false;
     }
+}
+
+#[derive(Clone)]
+pub struct Network<NT: NodeType, N: Clone, W: Clone> {
+    nodes: Vec<Node<NT, N, W>>,
 }
 
 impl<NT: NodeType, N: Clone, W: Clone> Network<NT, N, W> {
@@ -225,6 +226,73 @@ impl<NT: NodeType, N: Clone, W: Clone> Network<NT, N, W> {
             node_idx: source_node_idx,
             weight: weight,
         });
+    }
+}
+
+
+#[derive(Clone)]
+pub struct NetworkMap<NKEY: Ord + Clone, NT: NodeType, N: Clone, W: Clone> {
+    network: Network<NT, N, W>,
+    node_map: BTreeMap<NKEY, NodeIndex>,
+    node_map_rev: BTreeMap<NodeIndex, NKEY>,
+}
+
+impl<NKEY: Ord + Clone, NT: NodeType, N: Clone, W: Clone> NetworkMap<NKEY, NT, N, W> {
+    pub fn new() -> NetworkMap<NKEY, NT, N, W> {
+        NetworkMap {
+            network: Network::new(),
+            node_map: BTreeMap::new(),
+            node_map_rev: BTreeMap::new(),
+        }
+    }
+
+    pub fn nodes(&self) -> &[Node<NT, N, W>] {
+        self.network.nodes()
+    }
+
+    /// Registers/creates a new node under the external key `node_key`.
+    /// Panics if a node with `node_key` already exists.
+    pub fn add_node(&mut self, node_key: NKEY, node_type: NT, node_data: N) {
+        // XXX: Use node_map.entry()
+        if self.node_map.contains_key(&node_key) {
+            panic!("Duplicate node index");
+        }
+        let idx = self.network.add_node(node_type, node_data);
+        self.node_map.insert(node_key.clone(), idx);
+        // self.node_map_rev.insert(idx, node_key);
+    }
+
+    /// Returns a random link between two unconnected nodes, which would not introduce
+    /// a cycle. Return None is no such exists.
+    pub fn find_random_unconnected_link_no_cycle<R: Rng>(&self,
+                                                         rng: &mut R)
+                                                         -> Option<(&NKEY, &NKEY)> {
+        match self.network.find_random_unconnected_link_no_cycle(rng) {
+            Some((a, b)) => Some((&self.node_map_rev[&a], &self.node_map_rev[&b])),
+            None => None,
+        }
+    }
+
+    /// Returns true if the introduction of this directed link would lead towards a cycle.
+    pub fn link_would_cycle(&self, source_node_key: NKEY, target_node_key: NKEY) -> bool {
+        self.network.link_would_cycle(self.node_map[&source_node_key],
+                                      self.node_map[&target_node_key])
+    }
+
+    // Check if the link is valid. Doesn't check for cycles.
+    pub fn valid_link(&self,
+                      source_node_key: NKEY,
+                      target_node_key: NKEY)
+                      -> Result<(), &'static str> {
+        self.network.valid_link(self.node_map[&source_node_key],
+                                self.node_map[&target_node_key])
+    }
+
+    // Note: Doesn't check for cycles (except in the simple reflexive case).
+    pub fn add_link(&mut self, source_node_key: NKEY, target_node_key: NKEY, weight: W) {
+        self.network.add_link(self.node_map[&source_node_key],
+                              self.node_map[&target_node_key],
+                              weight)
     }
 }
 
