@@ -4,8 +4,9 @@ extern crate rand;
 use fixedbitset::FixedBitSet;
 use rand::Rng;
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 
-pub trait NodeType: Clone {
+pub trait NodeType: Clone + Debug {
     /// If the node allows incoming connections
     fn accept_incoming_links(&self) -> bool;
 
@@ -27,28 +28,32 @@ impl NodeIndex {
     }
 }
 
-#[derive(Clone)]
-pub struct Link<W: Clone> {
+#[derive(Clone, Debug)]
+pub struct Link<W: Clone + Debug> {
     pub node_idx: NodeIndex,
     pub weight: W,
 }
 
-#[derive(Clone)]
-pub struct Node<NT: NodeType, N: Clone, W: Clone> {
+#[derive(Clone, Debug)]
+pub struct Node<NT: NodeType, N: Clone + Debug, W: Clone + Debug> {
     pub node_type: NT,
     pub node_data: N,
     pub input_links: Vec<Link<W>>,
     pub output_links: Vec<Link<W>>,
 }
 
-struct CycleDetector<'a, NT: NodeType + 'a, N: Clone + 'a, W: Clone + 'a> {
+struct CycleDetector<'a, NT: NodeType + 'a, N: Clone + Debug + 'a, W: Clone + Debug + 'a> {
     nodes: &'a [Node<NT, N, W>],
     nodes_to_visit: Vec<usize>,
     seen_nodes: FixedBitSet,
     dirty: bool,
 }
 
-impl<'a, NT: NodeType + 'a, N: Clone + 'a, W: Clone + 'a> CycleDetector<'a, NT, N, W> {
+impl<'a, NT: NodeType + 'a, N: Clone + Debug + 'a, W: Clone + Debug + 'a> CycleDetector<'a,
+                                                                                        NT,
+                                                                                        N,
+                                                                                        W>
+    {
     fn new(network: &'a Network<NT, N, W>) -> CycleDetector<'a, NT, N, W> {
         CycleDetector {
             nodes: &network.nodes,
@@ -102,12 +107,12 @@ impl<'a, NT: NodeType + 'a, N: Clone + 'a, W: Clone + 'a> CycleDetector<'a, NT, 
     }
 }
 
-#[derive(Clone)]
-pub struct Network<NT: NodeType, N: Clone, W: Clone> {
+#[derive(Clone, Debug)]
+pub struct Network<NT: NodeType, N: Clone + Debug, W: Clone + Debug> {
     nodes: Vec<Node<NT, N, W>>,
 }
 
-impl<NT: NodeType, N: Clone, W: Clone> Network<NT, N, W> {
+impl<NT: NodeType, N: Clone + Debug, W: Clone + Debug> Network<NT, N, W> {
     pub fn new() -> Network<NT, N, W> {
         Network { nodes: Vec::new() }
     }
@@ -230,14 +235,18 @@ impl<NT: NodeType, N: Clone, W: Clone> Network<NT, N, W> {
 }
 
 
-#[derive(Clone)]
-pub struct NetworkMap<NKEY: Ord + Clone, NT: NodeType, N: Clone, W: Clone> {
+#[derive(Clone, Debug)]
+pub struct NetworkMap<NKEY: Ord + Clone + Debug, NT: NodeType, N: Clone + Debug, W: Clone + Debug> {
     network: Network<NT, N, W>,
     node_map: BTreeMap<NKEY, NodeIndex>,
     node_map_rev: BTreeMap<NodeIndex, NKEY>,
 }
 
-impl<NKEY: Ord + Clone, NT: NodeType, N: Clone, W: Clone> NetworkMap<NKEY, NT, N, W> {
+impl<NKEY: Ord + Clone + Debug, NT: NodeType, N: Clone + Debug, W: Clone + Debug> NetworkMap<NKEY,
+                                                                                             NT,
+                                                                                             N,
+                                                                                             W>
+    {
     pub fn new() -> NetworkMap<NKEY, NT, N, W> {
         NetworkMap {
             network: Network::new(),
@@ -301,7 +310,7 @@ mod tests {
     use rand;
     use super::{NodeType, Network};
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     enum NodeT {
         Input,
         Hidden,
