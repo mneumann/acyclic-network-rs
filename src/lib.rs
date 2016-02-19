@@ -268,7 +268,7 @@ impl<NKEY: Ord + Clone + Debug, NT: NodeType, N: Clone + Debug, W: Clone + Debug
         }
         let idx = self.network.add_node(node_type, node_data);
         self.node_map.insert(node_key.clone(), idx);
-        // self.node_map_rev.insert(idx, node_key);
+        self.node_map_rev.insert(idx, node_key);
     }
 
     /// Returns a random link between two unconnected nodes, which would not introduce
