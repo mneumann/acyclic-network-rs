@@ -14,6 +14,11 @@ pub trait NodeType: Clone + Debug + Send + Sized {
     fn accept_outgoing_links(&self) -> bool;
 }
 
+pub trait LinkWeight: Clone + Debug + Send + Sized {
+}
+
+impl LinkWeight for f64 {}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 /// New type wrapping a node index.
 pub struct NodeIndex(usize);
@@ -29,32 +34,27 @@ impl NodeIndex {
 }
 
 #[derive(Clone, Debug)]
-pub struct Link<W: Clone + Debug> {
+pub struct Link<L: LinkWeight> {
     pub node_idx: NodeIndex,
-    pub weight: W,
+    pub weight: L,
 }
 
 #[derive(Clone, Debug)]
-pub struct Node<NT: NodeType, N: Clone + Debug, W: Clone + Debug> {
-    pub node_type: NT,
-    pub node_data: N,
-    pub input_links: Vec<Link<W>>,
-    pub output_links: Vec<Link<W>>,
+pub struct Node<N: NodeType, L: LinkWeight> {
+    pub node_type: N,
+    pub input_links: Vec<Link<L>>,
+    pub output_links: Vec<Link<L>>,
 }
 
-struct CycleDetector<'a, NT: NodeType + 'a, N: Clone + Debug + 'a, W: Clone + Debug + 'a> {
-    nodes: &'a [Node<NT, N, W>],
+struct CycleDetector<'a, N: NodeType + 'a, L: LinkWeight + 'a> {
+    nodes: &'a [Node<N, L>],
     nodes_to_visit: Vec<usize>,
     seen_nodes: FixedBitSet,
     dirty: bool,
 }
 
-impl<'a, NT: NodeType + 'a, N: Clone + Debug + 'a, W: Clone + Debug + 'a> CycleDetector<'a,
-                                                                                        NT,
-                                                                                        N,
-                                                                                        W>
-    {
-    fn new(network: &'a Network<NT, N, W>) -> CycleDetector<'a, NT, N, W> {
+impl<'a, N: NodeType + 'a, L: LinkWeight + 'a> CycleDetector<'a, N, L> {
+    fn new(network: &'a Network<N, L>) -> CycleDetector<'a, N, L> {
         CycleDetector {
             nodes: &network.nodes,
             nodes_to_visit: Vec::new(),
@@ -109,24 +109,23 @@ impl<'a, NT: NodeType + 'a, N: Clone + Debug + 'a, W: Clone + Debug + 'a> CycleD
 
 #[derive(Clone, Debug)]
 /// A directed, acylic network.
-pub struct Network<NT: NodeType, N: Clone + Debug, W: Clone + Debug> {
-    nodes: Vec<Node<NT, N, W>>,
+pub struct Network<N: NodeType, L: LinkWeight> {
+    nodes: Vec<Node<N, L>>,
 }
 
-impl<NT: NodeType, N: Clone + Debug, W: Clone + Debug> Network<NT, N, W> {
-    pub fn new() -> Network<NT, N, W> {
+impl<N: NodeType, L: LinkWeight> Network<N, L> {
+    pub fn new() -> Network<N, L> {
         Network { nodes: Vec::new() }
     }
 
-    pub fn nodes(&self) -> &[Node<NT, N, W>] {
+    pub fn nodes(&self) -> &[Node<N, L>] {
         &self.nodes
     }
 
-    pub fn add_node(&mut self, node_type: NT, node_data: N) -> NodeIndex {
+    pub fn add_node(&mut self, node_type: N) -> NodeIndex {
         let idx = NodeIndex(self.nodes.len());
         self.nodes.push(Node {
             node_type: node_type,
-            node_data: node_data,
             input_links: Vec::new(),
             output_links: Vec::new(),
         });
@@ -187,7 +186,6 @@ impl<NT: NodeType, N: Clone + Debug, W: Clone + Debug> Network<NT, N, W> {
         return None;
     }
 
-
     /// Returns true if the introduction of this directed link would lead towards a cycle.
     pub fn link_would_cycle(&self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
         if source_node_idx == target_node_idx {
@@ -218,7 +216,7 @@ impl<NT: NodeType, N: Clone + Debug, W: Clone + Debug> Network<NT, N, W> {
     }
 
     // Note: Doesn't check for cycles (except in the simple reflexive case).
-    pub fn add_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex, weight: W) {
+    pub fn add_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex, weight: L) {
         if let Err(err) = self.valid_link(source_node_idx, target_node_idx) {
             panic!(err);
         }
@@ -237,18 +235,14 @@ impl<NT: NodeType, N: Clone + Debug, W: Clone + Debug> Network<NT, N, W> {
 
 
 #[derive(Clone, Debug)]
-pub struct NetworkMap<NKEY: Ord + Clone + Debug, NT: NodeType, N: Clone + Debug, W: Clone + Debug> {
-    network: Network<NT, N, W>,
+pub struct NetworkMap<NKEY: Ord + Clone + Debug, N: NodeType, L: LinkWeight> {
+    network: Network<N, L>,
     node_map: BTreeMap<NKEY, NodeIndex>,
     node_map_rev: BTreeMap<NodeIndex, NKEY>,
 }
 
-impl<NKEY: Ord + Clone + Debug, NT: NodeType, N: Clone + Debug, W: Clone + Debug> NetworkMap<NKEY,
-                                                                                             NT,
-                                                                                             N,
-                                                                                             W>
-    {
-    pub fn new() -> NetworkMap<NKEY, NT, N, W> {
+impl<NKEY: Ord + Clone + Debug, N: NodeType, L: LinkWeight> NetworkMap<NKEY, N, L> {
+    pub fn new() -> NetworkMap<NKEY, N, L> {
         NetworkMap {
             network: Network::new(),
             node_map: BTreeMap::new(),
@@ -256,18 +250,21 @@ impl<NKEY: Ord + Clone + Debug, NT: NodeType, N: Clone + Debug, W: Clone + Debug
         }
     }
 
-    pub fn nodes(&self) -> &[Node<NT, N, W>] {
+    pub fn nodes(&self) -> &[Node<N, L>] {
         self.network.nodes()
     }
 
     /// Registers/creates a new node under the external key `node_key`.
-    /// Panics if a node with `node_key` already exists.
-    pub fn add_node(&mut self, node_key: NKEY, node_type: NT, node_data: N) {
+    ///
+    /// # Panics
+    ///
+    /// If a node with `node_key` already exists.
+    pub fn add_node(&mut self, node_key: NKEY, node_type: N) {
         // XXX: Use node_map.entry()
         if self.node_map.contains_key(&node_key) {
             panic!("Duplicate node index");
         }
-        let idx = self.network.add_node(node_type, node_data);
+        let idx = self.network.add_node(node_type);
         self.node_map.insert(node_key.clone(), idx);
         self.node_map_rev.insert(idx, node_key);
     }
@@ -299,7 +296,7 @@ impl<NKEY: Ord + Clone + Debug, NT: NodeType, N: Clone + Debug, W: Clone + Debug
     }
 
     // Note: Doesn't check for cycles (except in the simple reflexive case).
-    pub fn add_link(&mut self, source_node_key: NKEY, target_node_key: NKEY, weight: W) {
+    pub fn add_link(&mut self, source_node_key: NKEY, target_node_key: NKEY, weight: L) {
         self.network.add_link(self.node_map[&source_node_key],
                               self.node_map[&target_node_key],
                               weight)
@@ -336,9 +333,9 @@ mod tests {
     #[test]
     fn test_cycle() {
         let mut g = Network::new();
-        let i1 = g.add_node(NodeT::Input, ());
-        let h1 = g.add_node(NodeT::Hidden, ());
-        let h2 = g.add_node(NodeT::Hidden, ());
+        let i1 = g.add_node(NodeT::Input);
+        let h1 = g.add_node(NodeT::Hidden);
+        let h2 = g.add_node(NodeT::Hidden);
         assert_eq!(true, g.valid_link(i1, i1).is_err());
         assert_eq!(true, g.valid_link(h1, h1).is_err());
 
@@ -366,9 +363,9 @@ mod tests {
     #[test]
     fn test_find_random_unconnected_link_no_cycle() {
         let mut g = Network::new();
-        let i1 = g.add_node(NodeT::Input, ());
-        let o1 = g.add_node(NodeT::Output, ());
-        let o2 = g.add_node(NodeT::Output, ());
+        let i1 = g.add_node(NodeT::Input);
+        let o1 = g.add_node(NodeT::Output);
+        let o2 = g.add_node(NodeT::Output);
 
         let mut rng = rand::thread_rng();
 
