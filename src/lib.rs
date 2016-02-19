@@ -4,7 +4,7 @@ extern crate rand;
 use fixedbitset::FixedBitSet;
 use rand::Rng;
 
-pub trait NodeType {
+pub trait NodeType: Clone {
     /// If the node allows incoming connections
     fn accept_incoming_links(&self) -> bool;
 
@@ -26,30 +26,33 @@ impl NodeIndex {
     }
 }
 
+#[derive(Clone)]
 pub struct Link<W: Clone> {
     pub node_idx: NodeIndex,
     pub weight: W,
 }
 
-pub struct Node<NT: NodeType, N, W: Clone> {
+#[derive(Clone)]
+pub struct Node<NT: NodeType, N: Clone, W: Clone> {
     pub node_type: NT,
     pub node_data: N,
     pub input_links: Vec<Link<W>>,
     pub output_links: Vec<Link<W>>,
 }
 
-pub struct Network<NT: NodeType, N, W: Clone> {
+#[derive(Clone)]
+pub struct Network<NT: NodeType, N: Clone, W: Clone> {
     nodes: Vec<Node<NT, N, W>>,
 }
 
-struct CycleDetector<'a, NT: NodeType + 'a, N: 'a, W: Clone + 'a> {
+struct CycleDetector<'a, NT: NodeType + 'a, N: Clone + 'a, W: Clone + 'a> {
     nodes: &'a [Node<NT, N, W>],
     nodes_to_visit: Vec<usize>,
     seen_nodes: FixedBitSet,
     dirty: bool,
 }
 
-impl<'a, NT: NodeType + 'a, N: 'a, W: Clone + 'a> CycleDetector<'a, NT, N, W> {
+impl<'a, NT: NodeType + 'a, N: Clone + 'a, W: Clone + 'a> CycleDetector<'a, NT, N, W> {
     fn new(network: &'a Network<NT, N, W>) -> CycleDetector<'a, NT, N, W> {
         CycleDetector {
             nodes: &network.nodes,
@@ -103,7 +106,7 @@ impl<'a, NT: NodeType + 'a, N: 'a, W: Clone + 'a> CycleDetector<'a, NT, N, W> {
     }
 }
 
-impl<NT: NodeType, N, W: Clone> Network<NT, N, W> {
+impl<NT: NodeType, N: Clone, W: Clone> Network<NT, N, W> {
     pub fn new() -> Network<NT, N, W> {
         Network { nodes: Vec::new() }
     }
@@ -230,6 +233,7 @@ mod tests {
     use rand;
     use super::{NodeType, Network};
 
+    #[derive(Clone)]
     enum NodeT {
         Input,
         Hidden,
