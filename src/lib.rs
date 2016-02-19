@@ -6,7 +6,7 @@ use rand::Rng;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 
-pub trait NodeType: Clone + Debug {
+pub trait NodeType: Clone + Debug + Send + Sized {
     /// If the node allows incoming connections
     fn accept_incoming_links(&self) -> bool;
 
@@ -108,6 +108,7 @@ impl<'a, NT: NodeType + 'a, N: Clone + Debug + 'a, W: Clone + Debug + 'a> CycleD
 }
 
 #[derive(Clone, Debug)]
+/// A directed, acylic network.
 pub struct Network<NT: NodeType, N: Clone + Debug, W: Clone + Debug> {
     nodes: Vec<Node<NT, N, W>>,
 }
