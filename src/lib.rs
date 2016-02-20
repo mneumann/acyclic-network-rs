@@ -250,6 +250,10 @@ impl<NKEY: Ord + Clone + Debug, N: NodeType, L: LinkWeight> NetworkMap<NKEY, N, 
         }
     }
 
+    pub fn network(&self) -> &Network<N, L> {
+        &self.network
+    }
+
     pub fn nodes(&self) -> &[Node<N, L>] {
         self.network.nodes()
     }
