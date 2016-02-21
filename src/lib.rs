@@ -118,6 +118,15 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
     }
 
     #[inline]
+    pub fn each_node_with_index<F>(&self, mut f: F)
+        where F: FnMut(&Node<N>, NodeIndex)
+    {
+        for (i, node) in self.nodes.iter().enumerate() {
+            f(node, NodeIndex(i));
+        }
+    }
+
+    #[inline]
     pub fn each_active_forward_link_of_node<F>(&self, node_idx: NodeIndex, mut f: F)
         where F: FnMut(NodeIndex, L)
     {
