@@ -5,7 +5,7 @@ use fixedbitset::FixedBitSet;
 use rand::Rng;
 use std::fmt::Debug;
 
-pub trait NodeType: Clone + Debug + Send + Sized {
+pub trait NodeType: Clone + Debug + Send + Sized + Ord {
     /// If the node allows incoming connections
     fn accept_incoming_links(&self) -> bool;
 
@@ -460,7 +460,7 @@ mod tests {
     use rand;
     use super::{NodeType, Network};
 
-    #[derive(Clone, Debug)]
+    #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
     enum NodeT {
         Input,
         Hidden,
