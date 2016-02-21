@@ -14,11 +14,6 @@ pub trait NodeType: Clone + Debug + Send + Sized {
     fn accept_outgoing_links(&self) -> bool;
 }
 
-pub trait LinkWeight: Copy + Debug + Send + Sized {
-}
-
-impl LinkWeight for f64 {}
-
 /// New type wrapping a node index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct NodeIndex(usize);
@@ -52,7 +47,7 @@ enum NextLink {
 }
 
 #[derive(Clone, Debug)]
-struct Link<L: LinkWeight> {
+struct Link<L: Copy + Debug + Send + Sized> {
     node_idx: NodeIndex,
     weight: L,
 
@@ -76,9 +71,9 @@ impl<N: NodeType> Node<N> {
     }
 }
 
-#[derive(Clone, Debug)]
 /// A directed, acylic network.
-pub struct Network<N: NodeType, L: LinkWeight> {
+#[derive(Clone, Debug)]
+pub struct Network<N: NodeType, L: Copy + Debug + Send + Sized> {
     nodes: Vec<Node<N>>,
     links: Vec<Link<L>>,
     free_links: NextLink,
@@ -86,7 +81,7 @@ pub struct Network<N: NodeType, L: LinkWeight> {
     link_count: usize,
 }
 
-impl<N: NodeType, L: LinkWeight> Network<N, L> {
+impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
     pub fn new() -> Network<N, L> {
         Network {
             nodes: Vec::new(),
@@ -368,7 +363,7 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
     }
 }
 
-struct CycleDetector<'a, N: NodeType + 'a, L: LinkWeight + 'a> {
+struct CycleDetector<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a> {
     nodes: &'a [Node<N>],
     links: &'a [Link<L>],
     nodes_to_visit: Vec<usize>,
@@ -376,7 +371,7 @@ struct CycleDetector<'a, N: NodeType + 'a, L: LinkWeight + 'a> {
     dirty: bool,
 }
 
-impl<'a, N: NodeType + 'a, L: LinkWeight + 'a> CycleDetector<'a, N, L> {
+impl<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a> CycleDetector<'a, N, L> {
     fn new(network: &'a Network<N, L>) -> CycleDetector<'a, N, L> {
         CycleDetector {
             nodes: &network.nodes,
@@ -438,13 +433,13 @@ impl<'a, N: NodeType + 'a, L: LinkWeight + 'a> CycleDetector<'a, N, L> {
 
 
 #[derive(Clone, Debug)]
-pub struct NetworkMap<NKEY: Ord + Clone + Debug, N: NodeType, L: LinkWeight> {
+pub struct NetworkMap<NKEY: Ord + Clone + Debug, N: NodeType, L: Copy + Debug + Send + Sized> {
     network: Network<N, L>,
     node_map: BTreeMap<NKEY, NodeIndex>,
     node_map_rev: BTreeMap<NodeIndex, NKEY>,
 }
 
-impl<NKEY: Ord + Clone + Debug, N: NodeType, L: LinkWeight> NetworkMap<NKEY, N, L> {
+impl<NKEY: Ord + Clone + Debug, N: NodeType, L: Copy + Debug + Send + Sized> NetworkMap<NKEY, N, L> {
     pub fn new() -> NetworkMap<NKEY, N, L> {
         NetworkMap {
             network: Network::new(),
