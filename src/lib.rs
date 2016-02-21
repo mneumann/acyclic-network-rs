@@ -42,8 +42,7 @@ pub struct Link<L: LinkWeight> {
 #[derive(Clone, Debug)]
 pub struct Node<N: NodeType, L: LinkWeight> {
     pub node_type: N,
-    pub input_links: Vec<Link<L>>,
-    pub output_links: Vec<Link<L>>,
+    pub forward_links: Vec<Link<L>>,
 }
 
 struct CycleDetector<'a, N: NodeType + 'a, L: LinkWeight + 'a> {
@@ -88,7 +87,7 @@ impl<'a, N: NodeType + 'a, L: LinkWeight + 'a> CycleDetector<'a, N, L> {
         seen_nodes.insert(path_from);
 
         while let Some(visit_node) = nodes_to_visit.pop() {
-            for out_link in &nodes[visit_node].output_links {
+            for out_link in &nodes[visit_node].forward_links {
                 let next_node = out_link.node_idx.index();
                 if !seen_nodes.contains(next_node) {
                     if next_node == path_to {
@@ -126,8 +125,7 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
         let idx = NodeIndex(self.nodes.len());
         self.nodes.push(Node {
             node_type: node_type,
-            input_links: Vec::new(),
-            output_links: Vec::new(),
+            forward_links: Vec::new(),
         });
         return idx;
     }
@@ -147,7 +145,7 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
         // Build up a binary, undirected adjacency matrix of the graph.
         // Every unset bit in the adj_matrix will be a potential link.
         for (i, node) in self.nodes.iter().enumerate() {
-            for link in node.output_links.iter() {
+            for link in node.forward_links.iter() {
                 let j = link.node_idx.index();
                 adj_matrix.insert(idx(i, j));
                 // include the link of reverse direction, because this would
@@ -221,14 +219,9 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
             panic!(err);
         }
 
-        self.nodes[source_node_idx.index()].output_links.push(Link {
+        self.nodes[source_node_idx.index()].forward_links.push(Link {
             node_idx: target_node_idx,
             weight: weight.clone(),
-        });
-
-        self.nodes[target_node_idx.index()].input_links.push(Link {
-            node_idx: source_node_idx,
-            weight: weight,
         });
     }
 }
