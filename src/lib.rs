@@ -262,6 +262,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
     }
 
     // Note: Doesn't check for cycles (except in the simple reflexive case).
+    // XXX: Keep the list of link sorted.
     pub fn add_link(&mut self,
                     source_node_idx: NodeIndex,
                     target_node_idx: NodeIndex,
@@ -377,7 +378,8 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         self.links[found_idx.index()].next_link = self.free_links;
         self.free_links = NextLink::Free(found_idx);
 
-        // XXX: Check overflow!
+        assert!(self.nodes[source_node_idx.index()].out_degree > 0);
+        assert!(self.nodes[target_node_idx.index()].in_degree > 0);
         self.nodes[source_node_idx.index()].out_degree -= 1;
         self.nodes[target_node_idx.index()].in_degree -= 1;
         self.link_count -= 1;
