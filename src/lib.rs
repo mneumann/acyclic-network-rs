@@ -59,29 +59,38 @@ struct Link<L: Copy + Debug + Send + Sized> {
 }
 
 #[derive(Clone, Debug)]
-pub struct Node<N: NodeType> {
+pub struct Node<N: NodeType, EXTID: Copy + Debug + Send + Sized> {
     node_type: N,
+    /// A node can store an external id.
+    ext_node_id: EXTID,
     first_link: NextLink,
 }
 
-impl<N: NodeType> Node<N> {
+impl<N: NodeType, EXTID: Copy + Debug + Send + Sized> Node<N, EXTID> {
     pub fn node_type(&self) -> &N {
         &self.node_type
+    }
+
+    pub fn ext_node_id(&self) -> EXTID {
+        self.ext_node_id
     }
 }
 
 /// A directed, acylic network.
 #[derive(Clone, Debug)]
-pub struct Network<N: NodeType, L: Copy + Debug + Send + Sized> {
-    nodes: Vec<Node<N>>,
+pub struct Network<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + Sized> {
+    nodes: Vec<Node<N, EXTID>>,
     links: Vec<Link<L>>,
     free_links: NextLink,
     node_count: usize,
     link_count: usize,
 }
 
-impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
-    pub fn new() -> Network<N, L> {
+impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + Sized> Network<N,
+                                                                                              L,
+                                                                                              EXTID>
+    {
+    pub fn new() -> Network<N, L, EXTID> {
         Network {
             nodes: Vec::new(),
             links: Vec::new(),
@@ -102,18 +111,18 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
     }
 
     #[inline(always)]
-    pub fn nodes(&self) -> &[Node<N>] {
+    pub fn nodes(&self) -> &[Node<N, EXTID>] {
         &self.nodes
     }
 
-    #[inline]
-    pub fn node_type_of(&self, node_idx: NodeIndex) -> &N {
-        &self.nodes[node_idx.index()].node_type
+    #[inline(always)]
+    pub fn node(&self, node_idx: NodeIndex) -> &Node<N, EXTID> {
+        &self.nodes[node_idx.index()]
     }
 
     #[inline]
     pub fn each_node_with_index<F>(&self, mut f: F)
-        where F: FnMut(&Node<N>, NodeIndex)
+        where F: FnMut(&Node<N, EXTID>, NodeIndex)
     {
         for (i, node) in self.nodes.iter().enumerate() {
             f(node, NodeIndex(i));
@@ -134,10 +143,11 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         }
     }
 
-    pub fn add_node(&mut self, node_type: N) -> NodeIndex {
+    pub fn add_node(&mut self, node_type: N, ext_node_id: EXTID) -> NodeIndex {
         let idx = NodeIndex(self.nodes.len());
         self.nodes.push(Node {
             node_type: node_type,
+            ext_node_id: ext_node_id,
             first_link: NextLink::EndOfChain,
         });
         self.node_count += 1;
@@ -362,16 +372,20 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
     }
 }
 
-struct CycleDetector<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a> {
-    nodes: &'a [Node<N>],
+struct CycleDetector<'a,
+                     N: NodeType + 'a,
+                     L: Copy + Debug + Send + Sized + 'a,
+                     EXTID: Copy + Debug + Send + Sized + 'a>
+{
+    nodes: &'a [Node<N, EXTID>],
     links: &'a [Link<L>],
     nodes_to_visit: Vec<usize>,
     seen_nodes: FixedBitSet,
     dirty: bool,
 }
 
-impl<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a> CycleDetector<'a, N, L> {
-    fn new(network: &'a Network<N, L>) -> CycleDetector<'a, N, L> {
+impl<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a, EXTID: Copy + Debug + Send + Sized + 'a> CycleDetector<'a, N, L, EXTID> {
+    fn new(network: &'a Network<N, L, EXTID>) -> CycleDetector<'a, N, L, EXTID> {
         CycleDetector {
             nodes: &network.nodes,
             links: &network.links,
@@ -460,9 +474,9 @@ mod tests {
     #[test]
     fn test_cycle() {
         let mut g = Network::new();
-        let i1 = g.add_node(NodeT::Input);
-        let h1 = g.add_node(NodeT::Hidden);
-        let h2 = g.add_node(NodeT::Hidden);
+        let i1 = g.add_node(NodeT::Input, ());
+        let h1 = g.add_node(NodeT::Hidden, ());
+        let h2 = g.add_node(NodeT::Hidden, ());
         assert_eq!(true, g.valid_link(i1, i1).is_err());
         assert_eq!(true, g.valid_link(h1, h1).is_err());
 
@@ -490,9 +504,9 @@ mod tests {
     #[test]
     fn test_find_random_unconnected_link_no_cycle() {
         let mut g = Network::new();
-        let i1 = g.add_node(NodeT::Input);
-        let o1 = g.add_node(NodeT::Output);
-        let o2 = g.add_node(NodeT::Output);
+        let i1 = g.add_node(NodeT::Input, ());
+        let o1 = g.add_node(NodeT::Output, ());
+        let o2 = g.add_node(NodeT::Output, ());
 
         let mut rng = rand::thread_rng();
 
