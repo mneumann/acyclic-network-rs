@@ -14,7 +14,7 @@ pub trait NodeType: Clone + Debug + Send + Sized {
     fn accept_outgoing_links(&self) -> bool;
 }
 
-pub trait LinkWeight: Clone + Debug + Send + Sized {
+pub trait LinkWeight: Clone + Copy + Debug + Send + Sized {
 }
 
 impl LinkWeight for f64 {}
@@ -24,25 +24,43 @@ impl LinkWeight for f64 {}
 pub struct NodeIndex(usize);
 
 impl NodeIndex {
+    #[inline(always)]
     pub fn new(idx: usize) -> NodeIndex {
         NodeIndex(idx)
     }
 
+    #[inline(always)]
     pub fn index(&self) -> usize {
         self.0
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct Link<L: LinkWeight> {
-    pub node_idx: NodeIndex,
-    pub weight: L,
+struct Link<L: LinkWeight> {
+    node_idx: NodeIndex,
+    weight: L,
 }
 
 #[derive(Clone, Debug)]
 pub struct Node<N: NodeType, L: LinkWeight> {
-    pub node_type: N,
-    pub forward_links: Vec<Link<L>>,
+    node_type: N,
+    forward_links: Vec<Link<L>>,
+}
+
+impl<N: NodeType, L: LinkWeight> Node<N, L> {
+    #[inline(always)]
+    pub fn node_type(&self) -> &N {
+        &self.node_type
+    }
+
+    pub fn each_active_forward_link<F>(&self, mut f: F)
+        where F: FnMut(NodeIndex, L)
+    {
+        for link in &self.forward_links {
+            // XXX: if link is active and not deleted
+            f(link.node_idx, link.weight);
+        }
+    }
 }
 
 struct CycleDetector<'a, N: NodeType + 'a, L: LinkWeight + 'a> {
@@ -117,6 +135,7 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
         Network { nodes: Vec::new() }
     }
 
+    #[inline(always)]
     pub fn nodes(&self) -> &[Node<N, L>] {
         &self.nodes
     }
