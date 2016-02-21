@@ -14,7 +14,7 @@ pub trait NodeType: Clone + Debug + Send + Sized {
     fn accept_outgoing_links(&self) -> bool;
 }
 
-pub trait LinkWeight: Clone + Copy + Debug + Send + Sized {
+pub trait LinkWeight: Copy + Debug + Send + Sized {
 }
 
 impl LinkWeight for f64 {}
