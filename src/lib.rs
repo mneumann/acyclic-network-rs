@@ -62,11 +62,26 @@ struct Link<L: Copy + Debug + Send + Sized> {
 pub struct Node<N: NodeType> {
     node_type: N,
     first_link: NextLink,
+    // in and out degree counts disabled links!
+    in_degree: u32,
+    out_degree: u32,
 }
 
 impl<N: NodeType> Node<N> {
     pub fn node_type(&self) -> &N {
         &self.node_type
+    }
+
+    pub fn in_degree(&self) -> u32 {
+        self.in_degree
+    }
+
+    pub fn out_degree(&self) -> u32 {
+        self.out_degree
+    }
+
+    pub fn in_out_degree(&self) -> (u32, u32) {
+        (self.in_degree, self.out_degree)
     }
 }
 
@@ -144,6 +159,8 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         self.nodes.push(Node {
             node_type: node_type,
             first_link: NextLink::EndOfChain,
+            in_degree: 0,
+            out_degree: 0,
         });
         self.node_count += 1;
         return idx;
@@ -255,6 +272,8 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         }
 
         self.link_count += 1;
+        self.nodes[source_node_idx.index()].out_degree += 1;
+        self.nodes[target_node_idx.index()].in_degree += 1;
 
         if let NextLink::Free(free_idx) = self.free_links {
             let next_link = self.nodes[source_node_idx.index()].first_link;
@@ -336,34 +355,33 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
 
     /// Remove the first link that matches `source_node_idx` and `target_node_idx`.
     pub fn remove_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
-        match self.find_link_index(source_node_idx, target_node_idx) {
+        let found_idx = match self.find_link_index(source_node_idx, target_node_idx) {
             Some((found_idx, Some(prev_idx))) => {
                 self.links[prev_idx.index()].next_link = self.links[found_idx.index()].next_link;
-
-                // XXX: Clear out the data in Link
-                // push found_idx on free list
-                self.links[found_idx.index()].next_link = self.free_links;
-                self.free_links = NextLink::Free(found_idx);
-
-                self.link_count -= 1;
-                true
+                found_idx
             }
             Some((found_idx, None)) => {
                 // `found_idx` is the first item in the list.
                 assert!(self.nodes[source_node_idx.index()].first_link == NextLink::At(found_idx));
                 self.nodes[source_node_idx.index()].first_link = NextLink::EndOfChain;
-
-                self.links[found_idx.index()].next_link = self.free_links;
-                self.free_links = NextLink::Free(found_idx);
-
-                self.link_count -= 1;
-                true
+                found_idx
             }
             None => {
                 // link was not found
-                false
+                return false;
             }
-        }
+        };
+
+        // XXX: Clear out the data in Link
+        // push found_idx on free list
+        self.links[found_idx.index()].next_link = self.free_links;
+        self.free_links = NextLink::Free(found_idx);
+
+        // XXX: Check overflow!
+        self.nodes[source_node_idx.index()].out_degree -= 1;
+        self.nodes[target_node_idx.index()].in_degree -= 1;
+        self.link_count -= 1;
+        return true;
     }
 }
 
@@ -476,7 +494,15 @@ mod tests {
         assert_eq!(Ok(()), g.valid_link(i1, h2));
         assert_eq!(Ok(()), g.valid_link(h1, h2));
 
+        assert_eq!((0, 0), g.node(i1).in_out_degree());
+        assert_eq!((0, 0), g.node(h1).in_out_degree());
+        assert_eq!((0, 0), g.node(h2).in_out_degree());
+
         g.add_link(i1, h1, 0.0);
+        assert_eq!((0, 1), g.node(i1).in_out_degree());
+        assert_eq!((1, 0), g.node(h1).in_out_degree());
+        assert_eq!((0, 0), g.node(h2).in_out_degree());
+
         assert_eq!(true, g.link_would_cycle(h1, i1));
         assert_eq!(false, g.link_would_cycle(i1, h1));
         assert_eq!(false, g.link_would_cycle(i1, h2));
@@ -486,6 +512,10 @@ mod tests {
         assert_eq!(false, g.link_would_cycle(h2, i1));
 
         g.add_link(h1, h2, 0.0);
+        assert_eq!((0, 1), g.node(i1).in_out_degree());
+        assert_eq!((1, 1), g.node(h1).in_out_degree());
+        assert_eq!((1, 0), g.node(h2).in_out_degree());
+
         assert_eq!(true, g.link_would_cycle(h2, i1));
         assert_eq!(true, g.link_would_cycle(h1, i1));
         assert_eq!(true, g.link_would_cycle(h2, h1));
