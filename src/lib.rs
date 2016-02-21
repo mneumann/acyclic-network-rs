@@ -23,12 +23,18 @@ impl LinkWeight for f64 {}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct NodeIndex(usize);
 
+/// New type wrapping a link index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LinkIndex(usize);
+
 impl NodeIndex {
     #[inline(always)]
-    pub fn new(idx: usize) -> NodeIndex {
-        NodeIndex(idx)
+    pub fn index(&self) -> usize {
+        self.0
     }
+}
 
+impl LinkIndex {
     #[inline(always)]
     pub fn index(&self) -> usize {
         self.0
@@ -37,9 +43,12 @@ impl NodeIndex {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum NextLink {
+    // End of list
     EndOfChain,
-    At(usize),
-    Free(usize),
+    // Points at the next link.
+    At(LinkIndex),
+    // Used in the free-list.
+    Free(LinkIndex),
 }
 
 #[derive(Clone, Debug)]
@@ -114,7 +123,7 @@ impl<'a, N: NodeType + 'a, L: LinkWeight + 'a> CycleDetector<'a, N, L> {
             let mut current_link = nodes[visit_node].first_link;
 
             while let NextLink::At(link_idx) = current_link {
-                let out_link = &self.links[link_idx];
+                let out_link = &self.links[link_idx.index()];
                 let next_node = out_link.node_idx.index();
                 if !seen_nodes.contains(next_node) {
                     if next_node == path_to {
@@ -168,7 +177,7 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
     {
         let mut current_link = self.nodes[node_idx.index()].first_link;
         while let NextLink::At(link_idx) = current_link {
-            let link = &self.links[link_idx];
+            let link = &self.links[link_idx.index()];
             if link.active {
                 f(link.node_idx, link.weight);
             }
@@ -207,7 +216,7 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
 
             let mut current_link = node.first_link;
             while let NextLink::At(link_idx) = current_link {
-                let link = &self.links[link_idx];
+                let link = &self.links[link_idx.index()];
                 let j = link.node_idx.index();
                 adj_matrix.insert(idx(i, j));
                 // include the link of reverse direction, because this would
@@ -279,7 +288,11 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
     }
 
     // Note: Doesn't check for cycles (except in the simple reflexive case).
-    pub fn add_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex, weight: L) {
+    pub fn add_link(&mut self,
+                    source_node_idx: NodeIndex,
+                    target_node_idx: NodeIndex,
+                    weight: L)
+                    -> LinkIndex {
         if let Err(err) = self.valid_link(source_node_idx, target_node_idx) {
             panic!(err);
         }
@@ -288,7 +301,7 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
             let next_link = self.nodes[source_node_idx.index()].first_link;
             self.nodes[source_node_idx.index()].first_link = NextLink::At(free_idx);
 
-            let next_free_idx = self.links[free_idx].next_link;
+            let next_free_idx = self.links[free_idx.index()].next_link;
             match next_free_idx {
                 NextLink::EndOfChain | NextLink::Free(_) => {
                     // OK
@@ -299,14 +312,16 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
             }
             self.free_links = next_free_idx;
 
-            self.links[free_idx] = Link {
+            self.links[free_idx.index()] = Link {
                 node_idx: target_node_idx,
                 weight: weight,
                 active: true,
                 next_link: next_link,
             };
+
+            return free_idx;
         } else {
-            let new_link_idx = self.links.len();
+            let new_link_idx = LinkIndex(self.links.len());
             let next_link = self.nodes[source_node_idx.index()].first_link;
             self.nodes[source_node_idx.index()].first_link = NextLink::At(new_link_idx);
 
@@ -316,6 +331,8 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
                 active: true,
                 next_link: next_link,
             });
+
+            return new_link_idx;
         }
     }
 
@@ -326,7 +343,7 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
                        -> bool {
         match self.find_link_index(source_node_idx, target_node_idx) {
             Some((link_idx, _)) => {
-                self.links[link_idx].active = active;
+                self.links[link_idx.index()].active = active;
                 true
             }
             None => false,
@@ -344,11 +361,11 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
     fn find_link_index(&self,
                        source_node_idx: NodeIndex,
                        target_node_idx: NodeIndex)
-                       -> Option<(usize, Option<usize>)> {
+                       -> Option<(LinkIndex, Option<LinkIndex>)> {
         let mut prev_link = None;
         let mut current_link = self.nodes[source_node_idx.index()].first_link;
         while let NextLink::At(link_idx) = current_link {
-            let link = &self.links[link_idx];
+            let link = &self.links[link_idx.index()];
             if link.node_idx == target_node_idx {
                 return Some((link_idx, prev_link));
             }
@@ -362,11 +379,11 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
     pub fn remove_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
         match self.find_link_index(source_node_idx, target_node_idx) {
             Some((found_idx, Some(prev_idx))) => {
-                self.links[prev_idx].next_link = self.links[found_idx].next_link;
+                self.links[prev_idx.index()].next_link = self.links[found_idx.index()].next_link;
 
                 // XXX: Clear out the data in Link
                 // push found_idx on free list
-                self.links[found_idx].next_link = self.free_links;
+                self.links[found_idx.index()].next_link = self.free_links;
                 self.free_links = NextLink::Free(found_idx);
 
                 true
@@ -376,7 +393,7 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
                 assert!(self.nodes[source_node_idx.index()].first_link == NextLink::At(found_idx));
                 self.nodes[source_node_idx.index()].first_link = NextLink::EndOfChain;
 
-                self.links[found_idx].next_link = self.free_links;
+                self.links[found_idx.index()].next_link = self.free_links;
                 self.free_links = NextLink::Free(found_idx);
 
                 true
@@ -457,9 +474,9 @@ impl<NKEY: Ord + Clone + Debug, N: NodeType, L: LinkWeight> NetworkMap<NKEY, N, 
 
     // Note: Doesn't check for cycles (except in the simple reflexive case).
     pub fn add_link(&mut self, source_node_key: NKEY, target_node_key: NKEY, weight: L) {
-        self.network.add_link(self.node_map[&source_node_key],
-                              self.node_map[&target_node_key],
-                              weight)
+        let _ = self.network.add_link(self.node_map[&source_node_key],
+                                      self.node_map[&target_node_key],
+                                      weight);
     }
 }
 
