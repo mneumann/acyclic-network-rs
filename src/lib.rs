@@ -39,6 +39,10 @@ impl NodeIndex {
 struct Link<L: LinkWeight> {
     node_idx: NodeIndex,
     weight: L,
+
+    // the activeness of a link has no influence on the
+    // cycle detection.
+    active: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -57,8 +61,9 @@ impl<N: NodeType, L: LinkWeight> Node<N, L> {
         where F: FnMut(NodeIndex, L)
     {
         for link in &self.forward_links {
-            // XXX: if link is active and not deleted
-            f(link.node_idx, link.weight);
+            if link.active {
+                f(link.node_idx, link.weight);
+            }
         }
     }
 }
@@ -240,8 +245,66 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
 
         self.nodes[source_node_idx.index()].forward_links.push(Link {
             node_idx: target_node_idx,
-            weight: weight.clone(),
+            weight: weight,
+            active: true,
         });
+    }
+
+    fn set_link_status(&mut self,
+                       source_node_idx: NodeIndex,
+                       target_node_idx: NodeIndex,
+                       active: bool)
+                       -> bool {
+        match self.find_link_mut(source_node_idx, target_node_idx) {
+            Some(link) => {
+                link.active = active;
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn enable_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
+        self.set_link_status(source_node_idx, target_node_idx, true)
+    }
+
+    pub fn disable_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
+        self.set_link_status(source_node_idx, target_node_idx, false)
+    }
+
+    fn find_link_mut(&mut self,
+                     source_node_idx: NodeIndex,
+                     target_node_idx: NodeIndex)
+                     -> Option<&mut Link<L>> {
+        for link in self.nodes[source_node_idx.index()].forward_links.iter_mut() {
+            if link.node_idx == target_node_idx {
+                return Some(link);
+            }
+        }
+        None
+    }
+
+    fn find_link_index(&self,
+                       source_node_idx: NodeIndex,
+                       target_node_idx: NodeIndex)
+                       -> Option<usize> {
+        for (i, link) in self.nodes[source_node_idx.index()].forward_links.iter().enumerate() {
+            if link.node_idx == target_node_idx {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    /// Remove the first link that matches `source_node_idx` and `target_node_idx`.
+    pub fn remove_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
+        match self.find_link_index(source_node_idx, target_node_idx) {
+            None => false,
+            Some(idx) => {
+                let _link = self.nodes[source_node_idx.index()].forward_links.swap_remove(idx);
+                true
+            }
+        }
     }
 }
 
