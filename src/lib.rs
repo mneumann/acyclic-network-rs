@@ -321,11 +321,11 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
                        active: bool)
                        -> bool {
         match self.find_link_index(source_node_idx, target_node_idx) {
-            Some((link_idx, _)) => {
+            (Some(link_idx), _) => {
                 self.links[link_idx.index()].active = active;
                 true
             }
-            None => false,
+            _ => false,
         }
     }
 
@@ -337,37 +337,41 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         self.set_link_status(source_node_idx, target_node_idx, false)
     }
 
+    // Returns (Some(index), _) if the given link was found.
+    // Returns (None, _) if the link was not found.
+    // (_, Some(prev_index)) is the index of the previous link in the list.
+    // (_, None) when no previous element exists (list is empty or contains one element).
     fn find_link_index(&self,
                        source_node_idx: NodeIndex,
                        target_node_idx: NodeIndex)
-                       -> Option<(LinkIndex, Option<LinkIndex>)> {
+                       -> (Option<LinkIndex>, Option<LinkIndex>) {
         let mut prev_link = None;
         let mut current_link = self.nodes[source_node_idx.index()].first_link;
         while let NextLink::At(link_idx) = current_link {
             let link = &self.links[link_idx.index()];
             if link.node_idx == target_node_idx {
-                return Some((link_idx, prev_link));
+                return (Some(link_idx), prev_link);
             }
             prev_link = Some(link_idx);
             current_link = link.next_link;
         }
-        None
+        return (None, prev_link);
     }
 
     /// Remove the first link that matches `source_node_idx` and `target_node_idx`.
     pub fn remove_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
         let found_idx = match self.find_link_index(source_node_idx, target_node_idx) {
-            Some((found_idx, Some(prev_idx))) => {
+            (Some(found_idx), Some(prev_idx)) => {
                 self.links[prev_idx.index()].next_link = self.links[found_idx.index()].next_link;
                 found_idx
             }
-            Some((found_idx, None)) => {
+            (Some(found_idx), None) => {
                 // `found_idx` is the first item in the list.
                 assert!(self.nodes[source_node_idx.index()].first_link == NextLink::At(found_idx));
                 self.nodes[source_node_idx.index()].first_link = NextLink::EndOfChain;
                 found_idx
             }
-            None => {
+            (None, _) => {
                 // link was not found
                 return false;
             }
