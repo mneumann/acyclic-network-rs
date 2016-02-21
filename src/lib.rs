@@ -102,6 +102,11 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
     }
 
     #[inline(always)]
+    pub fn node(&self, node_idx: NodeIndex) -> &Node<N> {
+        &self.nodes[node_idx.index()]
+    }
+
+    #[inline(always)]
     pub fn nodes(&self) -> &[Node<N>] {
         &self.nodes
     }
