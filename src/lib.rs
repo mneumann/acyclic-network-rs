@@ -3,7 +3,6 @@ extern crate rand;
 
 use fixedbitset::FixedBitSet;
 use rand::Rng;
-use std::collections::BTreeMap;
 use std::fmt::Debug;
 
 pub trait NodeType: Clone + Debug + Send + Sized {
@@ -428,80 +427,6 @@ impl<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a> CycleDetector<'a
 
         // We haven't found a cycle.
         return false;
-    }
-}
-
-
-#[derive(Clone, Debug)]
-pub struct NetworkMap<NKEY: Ord + Clone + Debug, N: NodeType, L: Copy + Debug + Send + Sized> {
-    network: Network<N, L>,
-    node_map: BTreeMap<NKEY, NodeIndex>,
-    node_map_rev: BTreeMap<NodeIndex, NKEY>,
-}
-
-impl<NKEY: Ord + Clone + Debug, N: NodeType, L: Copy + Debug + Send + Sized> NetworkMap<NKEY, N, L> {
-    pub fn new() -> NetworkMap<NKEY, N, L> {
-        NetworkMap {
-            network: Network::new(),
-            node_map: BTreeMap::new(),
-            node_map_rev: BTreeMap::new(),
-        }
-    }
-
-    pub fn network(&self) -> &Network<N, L> {
-        &self.network
-    }
-
-    pub fn nodes(&self) -> &[Node<N>] {
-        self.network.nodes()
-    }
-
-    /// Registers/creates a new node under the external key `node_key`.
-    ///
-    /// # Panics
-    ///
-    /// If a node with `node_key` already exists.
-    pub fn add_node(&mut self, node_key: NKEY, node_type: N) {
-        // XXX: Use node_map.entry()
-        if self.node_map.contains_key(&node_key) {
-            panic!("Duplicate node index");
-        }
-        let idx = self.network.add_node(node_type);
-        self.node_map.insert(node_key.clone(), idx);
-        self.node_map_rev.insert(idx, node_key);
-    }
-
-    /// Returns a random link between two unconnected nodes, which would not introduce
-    /// a cycle. Return None is no such exists.
-    pub fn find_random_unconnected_link_no_cycle<R: Rng>(&self,
-                                                         rng: &mut R)
-                                                         -> Option<(&NKEY, &NKEY)> {
-        match self.network.find_random_unconnected_link_no_cycle(rng) {
-            Some((a, b)) => Some((&self.node_map_rev[&a], &self.node_map_rev[&b])),
-            None => None,
-        }
-    }
-
-    /// Returns true if the introduction of this directed link would lead towards a cycle.
-    pub fn link_would_cycle(&self, source_node_key: NKEY, target_node_key: NKEY) -> bool {
-        self.network.link_would_cycle(self.node_map[&source_node_key],
-                                      self.node_map[&target_node_key])
-    }
-
-    // Check if the link is valid. Doesn't check for cycles.
-    pub fn valid_link(&self,
-                      source_node_key: NKEY,
-                      target_node_key: NKEY)
-                      -> Result<(), &'static str> {
-        self.network.valid_link(self.node_map[&source_node_key],
-                                self.node_map[&target_node_key])
-    }
-
-    // Note: Doesn't check for cycles (except in the simple reflexive case).
-    pub fn add_link(&mut self, source_node_key: NKEY, target_node_key: NKEY, weight: L) {
-        let _ = self.network.add_link(self.node_map[&source_node_key],
-                                      self.node_map[&target_node_key],
-                                      weight);
     }
 }
 
