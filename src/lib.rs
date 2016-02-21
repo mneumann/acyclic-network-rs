@@ -76,74 +76,6 @@ impl<N: NodeType> Node<N> {
     }
 }
 
-struct CycleDetector<'a, N: NodeType + 'a, L: LinkWeight + 'a> {
-    nodes: &'a [Node<N>],
-    links: &'a [Link<L>],
-    nodes_to_visit: Vec<usize>,
-    seen_nodes: FixedBitSet,
-    dirty: bool,
-}
-
-impl<'a, N: NodeType + 'a, L: LinkWeight + 'a> CycleDetector<'a, N, L> {
-    fn new(network: &'a Network<N, L>) -> CycleDetector<'a, N, L> {
-        CycleDetector {
-            nodes: &network.nodes,
-            links: &network.links,
-            nodes_to_visit: Vec::new(),
-            seen_nodes: FixedBitSet::with_capacity(network.nodes.len()),
-            dirty: false,
-        }
-    }
-
-    // The algorithm used in `Network.link_would_cycle` and
-    // `Network.find_random_unconnected_link_no_cycle`.  This is mostly extracted to avoid
-    // repetetive memory allocations in `find_random_unconnected_link_no_cycle`.
-    fn link_would_cycle(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
-        let path_from = target_node_idx.index();
-        let path_to = source_node_idx.index();
-
-        assert!(path_from != path_to);
-
-        let nodes = self.nodes;
-        let mut nodes_to_visit = &mut self.nodes_to_visit;
-        let mut seen_nodes = &mut self.seen_nodes;
-
-        if self.dirty {
-            nodes_to_visit.clear();
-            seen_nodes.clear();
-        }
-        self.dirty = true;
-
-        // We start at the from the target_node and iterate all paths from there. If we hit the source node,
-        // the addition of this link would lead towards a cycle. Otherwise not.
-        nodes_to_visit.push(path_from);
-        seen_nodes.insert(path_from);
-
-        while let Some(visit_node) = nodes_to_visit.pop() {
-            let mut current_link = nodes[visit_node].first_link;
-
-            while let NextLink::At(link_idx) = current_link {
-                let out_link = &self.links[link_idx.index()];
-                let next_node = out_link.node_idx.index();
-                if !seen_nodes.contains(next_node) {
-                    if next_node == path_to {
-                        // We found a path to `path_to`. We have found a cycle.
-                        return true;
-                    }
-
-                    seen_nodes.insert(next_node);
-                    nodes_to_visit.push(next_node)
-                }
-
-                current_link = out_link.next_link;
-            }
-        }
-
-        // We haven't found a cycle.
-        return false;
-    }
-}
-
 #[derive(Clone, Debug)]
 /// A directed, acylic network.
 pub struct Network<N: NodeType, L: LinkWeight> {
@@ -403,6 +335,74 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
                 false
             }
         }
+    }
+}
+
+struct CycleDetector<'a, N: NodeType + 'a, L: LinkWeight + 'a> {
+    nodes: &'a [Node<N>],
+    links: &'a [Link<L>],
+    nodes_to_visit: Vec<usize>,
+    seen_nodes: FixedBitSet,
+    dirty: bool,
+}
+
+impl<'a, N: NodeType + 'a, L: LinkWeight + 'a> CycleDetector<'a, N, L> {
+    fn new(network: &'a Network<N, L>) -> CycleDetector<'a, N, L> {
+        CycleDetector {
+            nodes: &network.nodes,
+            links: &network.links,
+            nodes_to_visit: Vec::new(),
+            seen_nodes: FixedBitSet::with_capacity(network.nodes.len()),
+            dirty: false,
+        }
+    }
+
+    // The algorithm used in `Network.link_would_cycle` and
+    // `Network.find_random_unconnected_link_no_cycle`.  This is mostly extracted to avoid
+    // repetetive memory allocations in `find_random_unconnected_link_no_cycle`.
+    fn link_would_cycle(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
+        let path_from = target_node_idx.index();
+        let path_to = source_node_idx.index();
+
+        assert!(path_from != path_to);
+
+        let nodes = self.nodes;
+        let mut nodes_to_visit = &mut self.nodes_to_visit;
+        let mut seen_nodes = &mut self.seen_nodes;
+
+        if self.dirty {
+            nodes_to_visit.clear();
+            seen_nodes.clear();
+        }
+        self.dirty = true;
+
+        // We start at the from the target_node and iterate all paths from there. If we hit the source node,
+        // the addition of this link would lead towards a cycle. Otherwise not.
+        nodes_to_visit.push(path_from);
+        seen_nodes.insert(path_from);
+
+        while let Some(visit_node) = nodes_to_visit.pop() {
+            let mut current_link = nodes[visit_node].first_link;
+
+            while let NextLink::At(link_idx) = current_link {
+                let out_link = &self.links[link_idx.index()];
+                let next_node = out_link.node_idx.index();
+                if !seen_nodes.contains(next_node) {
+                    if next_node == path_to {
+                        // We found a path to `path_to`. We have found a cycle.
+                        return true;
+                    }
+
+                    seen_nodes.insert(next_node);
+                    nodes_to_visit.push(next_node)
+                }
+
+                current_link = out_link.next_link;
+            }
+        }
+
+        // We haven't found a cycle.
+        return false;
     }
 }
 
