@@ -82,6 +82,8 @@ pub struct Network<N: NodeType, L: LinkWeight> {
     nodes: Vec<Node<N>>,
     links: Vec<Link<L>>,
     free_links: NextLink,
+    node_count: usize,
+    link_count: usize,
 }
 
 impl<N: NodeType, L: LinkWeight> Network<N, L> {
@@ -90,7 +92,19 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
             nodes: Vec::new(),
             links: Vec::new(),
             free_links: NextLink::EndOfChain,
+            node_count: 0,
+            link_count: 0,
         }
+    }
+
+    #[inline]
+    pub fn node_count(&self) -> usize {
+        self.node_count
+    }
+
+    #[inline]
+    pub fn link_count(&self) -> usize {
+        self.link_count
     }
 
     #[inline(always)]
@@ -123,10 +137,13 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
             node_type: node_type,
             first_link: NextLink::EndOfChain,
         });
+        self.node_count += 1;
         return idx;
     }
 
-    pub fn delete_node(&mut self) {
+    pub fn delete_node(&mut self, _node_idx: NodeIndex) {
+        self.node_count -= 1;
+        unimplemented!();
         // XXX
     }
 
@@ -229,6 +246,8 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
             panic!(err);
         }
 
+        self.link_count += 1;
+
         if let NextLink::Free(free_idx) = self.free_links {
             let next_link = self.nodes[source_node_idx.index()].first_link;
             self.nodes[source_node_idx.index()].first_link = NextLink::At(free_idx);
@@ -318,6 +337,7 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
                 self.links[found_idx.index()].next_link = self.free_links;
                 self.free_links = NextLink::Free(found_idx);
 
+                self.link_count -= 1;
                 true
             }
             Some((found_idx, None)) => {
@@ -328,6 +348,7 @@ impl<N: NodeType, L: LinkWeight> Network<N, L> {
                 self.links[found_idx.index()].next_link = self.free_links;
                 self.free_links = NextLink::Free(found_idx);
 
+                self.link_count -= 1;
                 true
             }
             None => {
