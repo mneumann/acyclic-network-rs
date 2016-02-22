@@ -13,10 +13,10 @@ pub trait NodeType: Clone + Debug + Send + Sized {
     fn accept_outgoing_links(&self) -> bool;
 
     /// Is used to determine an order on nodes.
-    /// If `in_order` is true, then self < other.
-    /// The default is no order (always true).
-    fn in_order(&self, _other: &Self) -> bool {
-        true
+    /// If `in_order` is Some(true), then self < other.
+    /// The default is no order (None).
+    fn in_order(&self, _other: &Self) -> Option<bool> {
+        None
     }
 }
 
@@ -393,7 +393,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
 
             // If we are out of order, the link does not exist and a new link should be
             // inserted after the prev_link.
-            if !target_node_type.in_order(self.node(link.node_idx).node_type()) {
+            if let Some(false) = target_node_type.in_order(self.node(link.node_idx).node_type()) {
                 return (None, prev_link);
             }
 
