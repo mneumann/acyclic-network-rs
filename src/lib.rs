@@ -371,6 +371,34 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         Ok(())
     }
 
+    fn allocate_link_item(&mut self, link_item: LinkItem<L, EXTID>) -> LinkIndex {
+        let new_link_idx = LinkIndex(self.links.len());
+        self.links.push(link_item);
+        return new_link_idx;
+    }
+
+    fn set_link_status(&mut self,
+                       source_node_idx: NodeIndex,
+                       target_node_idx: NodeIndex,
+                       active: bool)
+                       -> bool {
+        match self.find_link_index_exact(source_node_idx, target_node_idx) {
+            Some(link_idx) => {
+                self.link_mut(link_idx).active = active;
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn enable_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
+        self.set_link_status(source_node_idx, target_node_idx, true)
+    }
+
+    pub fn disable_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
+        self.set_link_status(source_node_idx, target_node_idx, false)
+    }
+
     // Note: Doesn't check for cycles (except in the simple reflexive case).
 // Note that we keep the list of links sorted according to it's external_link_id.
 // XXX: Need test cases.
@@ -424,34 +452,6 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                 return new_link_idx;
             }
         }
-    }
-
-    fn allocate_link_item(&mut self, link_item: LinkItem<L, EXTID>) -> LinkIndex {
-        let new_link_idx = LinkIndex(self.links.len());
-        self.links.push(link_item);
-        return new_link_idx;
-    }
-
-    fn set_link_status(&mut self,
-                       source_node_idx: NodeIndex,
-                       target_node_idx: NodeIndex,
-                       active: bool)
-                       -> bool {
-        match self.find_link_index_exact(source_node_idx, target_node_idx) {
-            Some(link_idx) => {
-                self.link_mut(link_idx).active = active;
-                true
-            }
-            None => false,
-        }
-    }
-
-    pub fn enable_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
-        self.set_link_status(source_node_idx, target_node_idx, true)
-    }
-
-    pub fn disable_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
-        self.set_link_status(source_node_idx, target_node_idx, false)
     }
 
 // returns the index of the element whoose external link id is <= than
