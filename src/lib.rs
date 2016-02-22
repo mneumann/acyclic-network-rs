@@ -5,12 +5,19 @@ use fixedbitset::FixedBitSet;
 use rand::Rng;
 use std::fmt::Debug;
 
-pub trait NodeType: Clone + Debug + Send + Sized + Ord {
+pub trait NodeType: Clone + Debug + Send + Sized {
     /// If the node allows incoming connections
     fn accept_incoming_links(&self) -> bool;
 
     /// If the node allows outgoing connections
     fn accept_outgoing_links(&self) -> bool;
+
+    /// Is used to determine an order on nodes.
+    /// If `in_order` is true, then self < other.
+    /// The default is no order (always true).
+    fn in_order(&self, _other: &Self) -> bool {
+        true
+    }
 }
 
 /// New type wrapping a node index.
@@ -119,6 +126,11 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
     #[inline(always)]
     pub fn node(&self, node_idx: NodeIndex) -> &Node<N> {
         &self.nodes[node_idx.index()]
+    }
+
+    #[inline(always)]
+    fn link(&self, link_idx: LinkIndex) -> &Link<L> {
+        &self.links[link_idx.index()]
     }
 
     #[inline(always)]
@@ -262,7 +274,8 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
     }
 
     // Note: Doesn't check for cycles (except in the simple reflexive case).
-    // XXX: Keep the list of link sorted.
+    // Note that we use NodeType#in_order() to keep the list of links in order.
+    // XXX: Need test cases.
     pub fn add_link(&mut self,
                     source_node_idx: NodeIndex,
                     target_node_idx: NodeIndex,
@@ -276,11 +289,34 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         self.nodes[source_node_idx.index()].out_degree += 1;
         self.nodes[target_node_idx.index()].in_degree += 1;
 
-        if let NextLink::Free(free_idx) = self.free_links {
-            let next_link = self.nodes[source_node_idx.index()].first_link;
-            self.nodes[source_node_idx.index()].first_link = NextLink::At(free_idx);
+        match self.find_link_index(source_node_idx, target_node_idx) {
+            (Some(_), _) => {
+                panic!("duplicate link");
+            }
+            (None, Some(prev_link_idx)) => {
+                // we should insert the node after prev_link_idx.
+                let next_link = self.link(prev_link_idx).next_link;
+                let new_link_idx = self.allocate_link(target_node_idx, weight, next_link);
+                self.links[prev_link_idx.index()].next_link = NextLink::At(new_link_idx);
+                return new_link_idx;
+            }
+            (None, None) => {
+                // prepend.
+                let next_link = self.node(source_node_idx).first_link;
+                let new_link_idx = self.allocate_link(target_node_idx, weight, next_link);
+                self.nodes[source_node_idx.index()].first_link = NextLink::At(new_link_idx);
+                return new_link_idx;
+            }
+        }
+    }
 
-            let next_free_idx = self.links[free_idx.index()].next_link;
+    fn allocate_link(&mut self,
+                     link_to_node_idx: NodeIndex,
+                     weight: L,
+                     next_link: NextLink)
+                     -> LinkIndex {
+        if let NextLink::Free(free_idx) = self.free_links {
+            let next_free_idx = self.link(free_idx).next_link;
             match next_free_idx {
                 NextLink::EndOfChain | NextLink::Free(_) => {
                     // OK
@@ -292,7 +328,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
             self.free_links = next_free_idx;
 
             self.links[free_idx.index()] = Link {
-                node_idx: target_node_idx,
+                node_idx: link_to_node_idx,
                 weight: weight,
                 active: true,
                 next_link: next_link,
@@ -301,11 +337,8 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
             return free_idx;
         } else {
             let new_link_idx = LinkIndex(self.links.len());
-            let next_link = self.nodes[source_node_idx.index()].first_link;
-            self.nodes[source_node_idx.index()].first_link = NextLink::At(new_link_idx);
-
             self.links.push(Link {
-                node_idx: target_node_idx,
+                node_idx: link_to_node_idx,
                 weight: weight,
                 active: true,
                 next_link: next_link,
@@ -345,13 +378,25 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
                        source_node_idx: NodeIndex,
                        target_node_idx: NodeIndex)
                        -> (Option<LinkIndex>, Option<LinkIndex>) {
+
+        // we use the target_node for the sort order.
+        let target_node_type = self.node(target_node_idx).node_type();
+
         let mut prev_link = None;
-        let mut current_link = self.nodes[source_node_idx.index()].first_link;
+        let mut current_link = self.node(source_node_idx).first_link;
         while let NextLink::At(link_idx) = current_link {
-            let link = &self.links[link_idx.index()];
+            let link = self.link(link_idx);
+
             if link.node_idx == target_node_idx {
                 return (Some(link_idx), prev_link);
             }
+
+            // If we are out of order, the link does not exist and a new link should be
+            // inserted after the prev_link.
+            if !target_node_type.in_order(self.node(link.node_idx).node_type()) {
+                return (None, prev_link);
+            }
+
             prev_link = Some(link_idx);
             current_link = link.next_link;
         }
@@ -464,7 +509,7 @@ mod tests {
     use rand;
     use super::{NodeType, Network};
 
-    #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Clone, Debug)]
     enum NodeT {
         Input,
         Hidden,
