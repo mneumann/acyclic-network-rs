@@ -41,61 +41,15 @@ impl LinkIndex {
     }
 }
 
-// Wraps a Link for use in a single linked list
+// Wraps a Link for use in a double linked list
 #[derive(Clone, Debug)]
-enum LinkItem<L, EXTID>
+struct LinkItem<L, EXTID>
     where L: Copy + Debug + Send + Sized,
           EXTID: Copy + Debug + Send + Sized + Ord
 {
-    Free {
-        next: Option<LinkIndex>,
-    },
-    Used {
-        next: Option<LinkIndex>,
-        link: Link<L, EXTID>,
-    },
-}
-
-impl<L, EXTID> LinkItem<L, EXTID>
-    where L: Copy + Debug + Send + Sized,
-          EXTID: Copy + Debug + Send + Sized + Ord
-{
-    fn set_next_used(&mut self, next_used: Option<LinkIndex>) {
-        match *self {
-            LinkItem::Used { ref mut next, .. } => {
-                *next = next_used;
-            }
-            _ => panic!(),
-        }
-    }
-
-    fn next_used(&self) -> Option<LinkIndex> {
-        match *self {
-            LinkItem::Used { next, .. } => next,
-            _ => panic!(),
-        }
-    }
-
-    fn ref_used(&self) -> &Link<L, EXTID> {
-        match *self {
-            LinkItem::Used { ref link, .. } => link,
-            _ => panic!(),
-        }
-    }
-
-    fn next_free(&self) -> Option<LinkIndex> {
-        match *self {
-            LinkItem::Free { next } => next,
-            _ => panic!(),
-        }
-    }
-
-    fn is_used(&self) -> bool {
-        match *self {
-            LinkItem::Used { .. } => true,
-            _ => false,
-        }
-    }
+    prev: Option<LinkIndex>,
+    next: Option<LinkIndex>,
+    link: Link<L, EXTID>,
 }
 
 struct LinkIter {
@@ -122,7 +76,7 @@ impl LinkIter {
         match self.next_link_idx {
             Some(idx) => {
                 self.prev_link_idx = Some(idx);
-                self.next_link_idx = link_array[idx.index()].next_used();
+                self.next_link_idx = link_array[idx.index()].next;
                 return Some(idx);
             }
             None => {
@@ -197,7 +151,6 @@ pub struct Network<N: NodeType,
 {
     nodes: Vec<Node<N, EXTID>>,
     links: Vec<LinkItem<L, EXTID>>, // XXX: Rename to link_items
-    free_links: Option<LinkIndex>,
     node_count: usize,
     link_count: usize,
 }
@@ -207,7 +160,6 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         Network {
             nodes: Vec::new(),
             links: Vec::new(),
-            free_links: None,
             node_count: 0,
             link_count: 0,
         }
@@ -240,22 +192,12 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
 
     #[inline(always)]
     fn link(&self, link_idx: LinkIndex) -> &Link<L, EXTID> {
-        match self.links[link_idx.index()] {
-            LinkItem::Used { ref link, .. } => link,
-            LinkItem::Free { .. } => {
-                panic!();
-            }
-        }
+        &self.link_item(link_idx).link
     }
 
     #[inline(always)]
     fn link_mut(&mut self, link_idx: LinkIndex) -> &mut Link<L, EXTID> {
-        match self.links[link_idx.index()] {
-            LinkItem::Used { ref mut link, ..} => link,
-            LinkItem::Free { .. } => {
-                panic!();
-            }
-        }
+        &mut(self.links[link_idx.index()].link)
     }
 
     #[inline(always)]
@@ -423,50 +365,40 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             active: true,
         };
 
-        match self.find_link_index(source_node_idx, target_node_idx, Some(external_link_id)) {
-            (Some(_), _) => {
-                panic!("duplicate link");
-            }
-            (None, Some(prev_link_idx)) => {
-// we should insert the node after prev_link_idx.
-                let next_link = self.link_item(prev_link_idx).next_used();
-                let new_link_idx = self.allocate_link(link, next_link);
-                self.links[prev_link_idx.index()].set_next_used(Some(new_link_idx));
+        match self.find_link_index_insert(source_node_idx, target_node_idx, external_link_id) {
+            None => {
+// prepend
+                let next_link = self.node(source_node_idx).first_link;
+                let new_link_idx = self.allocate_link_item(LinkItem{
+                    link: link,
+                    prev: None,
+                    next: next_link,
+                });
+                self.node_mut(source_node_idx).first_link = Some(new_link_idx);
                 return new_link_idx;
             }
-            (None, None) => {
-// prepend.
-                let next_link = self.node(source_node_idx).first_link;
-                let new_link_idx = self.allocate_link(link, next_link);
-                self.node_mut(source_node_idx).first_link = Some(new_link_idx);
+            Some(idx) => {
+                if self.link(idx).target_node_idx == target_node_idx {
+                    assert!(self.link(idx).external_link_id == external_link_id);
+                    panic!("Duplicate link");
+                }
+                let next_link = self.link_item(idx).next;
+// insert new link after `idx`
+                let new_link_idx = self.allocate_link_item(LinkItem{
+                    link: link,
+                    prev: Some(idx),
+                    next: next_link,
+                });
+                self.links[idx.index()].next = Some(new_link_idx);
                 return new_link_idx;
             }
         }
     }
 
-    fn allocate_link(&mut self, link: Link<L, EXTID>, next_link: Option<LinkIndex>) -> LinkIndex {
-        if let Some(free_idx) = self.free_links {
-            let next_free_idx = self.link_item(free_idx).next_free();
-            self.free_links = next_free_idx;
-
-            if let LinkItem::Used { .. } = self.links[free_idx.index()] {
-                panic!("Trying to reuse an link item which is in use!");
-            }
-
-            self.links[free_idx.index()] = LinkItem::Used {
-                link: link,
-                next: next_link,
-            };
-
-            return free_idx;
-        } else {
-            let new_link_idx = LinkIndex(self.links.len());
-            self.links.push(LinkItem::Used {
-                link: link,
-                next: next_link,
-            });
-            return new_link_idx;
-        }
+    fn allocate_link_item(&mut self, link_item: LinkItem<L, EXTID>) -> LinkIndex {
+        let new_link_idx = LinkIndex(self.links.len());
+        self.links.push(link_item);
+        return new_link_idx;
     }
 
     fn set_link_status(&mut self,
@@ -474,12 +406,12 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                        target_node_idx: NodeIndex,
                        active: bool)
                        -> bool {
-        match self.find_link_index(source_node_idx, target_node_idx, None) {
-            (Some(link_idx), _) => {
+        match self.find_link_index_exact(source_node_idx, target_node_idx) {
+            Some(link_idx) => {
                 self.link_mut(link_idx).active = active;
                 true
             }
-            _ => false,
+            None => false,
         }
     }
 
@@ -491,79 +423,110 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         self.set_link_status(source_node_idx, target_node_idx, false)
     }
 
-// Returns (Some(index), _) if the given link was found.
-// Returns (None, _) if the link was not found.
-// (_, Some(prev_index)) is the index of the previous link in the list.
-// (_, None) when no previous element exists (list is empty or contains one element).
-    fn find_link_index(&self,
+// returns the index of the element whoose external link id is <= than
+// `external_link_id`.
+    fn find_link_index_insert(&self,
                        source_node_idx: NodeIndex,
-                       target_node_idx: NodeIndex,
-                       external_link_id: Option<EXTID>
-                       )
-                       -> (Option<LinkIndex>, Option<LinkIndex>) {
-
+                       _target_node_idx: NodeIndex,
+                       external_link_id: EXTID)
+                       -> Option<LinkIndex> {
 // the links are sorted according to their external link id.
-// if `external_link_id` is Some(), we abort the search once
-// the value is > than the current link.
+        let mut link_iter = self.link_iter_for_node(source_node_idx);
+        while let Some(link_idx) = link_iter.next(&self.links) {
+            let link = self.link(link_idx);
 
+            if link.external_link_id() > external_link_id {
+                break;
+            }
+        }
+        return link_iter.get_prev();
+    }
+
+    fn find_link_index_exact(&self,
+                       source_node_idx: NodeIndex,
+                       target_node_idx: NodeIndex)
+                       -> Option<LinkIndex> {
         let mut link_iter = self.link_iter_for_node(source_node_idx);
         while let Some(link_idx) = link_iter.next(&self.links) {
             let link = self.link(link_idx);
 
 // We found the node we are looking for.
             if link.target_node_idx == target_node_idx {
-                if let Some(ext) = external_link_id {
-                    debug_assert!(link.external_link_id() == ext);
-                }
-
-                return (Some(link_idx), link_iter.get_prev());
-            }
-
-// We keep the links sorted according to the target node's `external_node_id`.
-// If we are out of order, the link does not exist and a new link should be
-// inserted after the prev_link.
-            if let Some(ext) = external_link_id {
-                debug_assert!(link.external_link_id() != ext);
-                if link.external_link_id() > ext {
-                    break;
-                }
+                return Some(link_idx);
             }
         }
-        return (None, link_iter.get_prev());
+        return None;
     }
 
 /// Remove the first link that matches `source_node_idx` and `target_node_idx`.
     pub fn remove_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
-        let found_idx = match self.find_link_index(source_node_idx, target_node_idx, None) {
-            (Some(found_idx), Some(prev_idx)) => {
-                let next_used = self.link_item(found_idx).next_used();
-                self.links[prev_idx.index()].set_next_used(next_used);
-                found_idx
+        match self.find_link_index_exact(source_node_idx, target_node_idx) {
+            Some(found_idx) => {
+                debug_assert!(self.link(found_idx).source_node_idx == source_node_idx);
+                debug_assert!(self.link(found_idx).target_node_idx == target_node_idx);
+// remove item from chain
+                match self.link_item(found_idx).prev {
+                    None => {
+// `found_idx` is the first element in the list
+                        assert!(self.node(source_node_idx).first_link == Some(found_idx));
+                        self.node_mut(source_node_idx).first_link = self.link_item(found_idx).next;
+                    }
+                    Some(prev_idx) => {
+                        assert!(self.link_item(prev_idx).next == Some(found_idx));
+                        let next = self.link_item(found_idx).next;
+                        self.links[prev_idx.index()].next = next;
+                    }
+                }
+
+// swap the item with the last one.
+                let replaced_element_idx = LinkIndex(self.links.len() - 1);
+                let old = self.links.swap_remove(found_idx.index());
+                debug_assert!(old.link.source_node_idx == source_node_idx);
+                debug_assert!(old.link.target_node_idx == target_node_idx);
+
+// We have to change the linking of the newly at position `found_idx` placed
+// element.
+                let new_found_idx = found_idx;
+// change the next pointer of the previous element
+                match self.link_item(new_found_idx).prev {
+                    Some(idx) => {
+                        assert!(self.link_item(idx).next == Some(replaced_element_idx));
+                        self.links[idx.index()].next = Some(new_found_idx);
+                    }
+                    None => {
+// it was the first in the chain
+// we have to update the associated nodes first_link field.
+                        assert!(self.node(self.link(new_found_idx).source_node_idx).first_link == Some(replaced_element_idx));
+                        let src = self.link(new_found_idx).source_node_idx;
+                        self.node_mut(src).first_link = Some(new_found_idx);
+                    }
+                }
+
+// change the prev pointer of the next element
+                match self.link_item(new_found_idx).next {
+                    Some(idx) => {
+                        assert!(self.link_item(idx).prev == Some(replaced_element_idx));
+                        self.links[idx.index()].prev = Some(new_found_idx);
+                    }
+                    None => {
+// last in the chain. nothing to do.
+                    }
+                }
+
+                assert!(self.node(source_node_idx).out_degree > 0);
+                assert!(self.node(target_node_idx).in_degree > 0);
+                self.node_mut(source_node_idx).out_degree -= 1;
+                self.node_mut(target_node_idx).in_degree -= 1;
+                self.link_count -= 1;
+                return true;
             }
-            (Some(found_idx), None) => {
-// `found_idx` is the first item in the list.
-                assert!(self.node(source_node_idx).first_link == Some(found_idx));
-                assert!(self.link_item(found_idx).next_used().is_none());
-                self.node_mut(source_node_idx).first_link = None;
-                found_idx
-            }
-            (None, _) => {
+
+            None => {
 // link was not found
-                return false;
+               return false;
             }
-        };
+        }
 
-// push found_idx on free list
-        assert!(self.links[found_idx.index()].is_used());
-        self.links[found_idx.index()] = LinkItem::Free { next: self.free_links };
-        self.free_links = Some(found_idx);
-
-        assert!(self.node(source_node_idx).out_degree > 0);
-        assert!(self.node(target_node_idx).in_degree > 0);
-        self.node_mut(source_node_idx).out_degree -= 1;
-        self.node_mut(target_node_idx).in_degree -= 1;
-        self.link_count -= 1;
-        return true;
     }
 }
 
@@ -618,7 +581,7 @@ impl<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a, EXTID: Copy + De
             let mut link_iter = LinkIter::from(nodes[visit_node].first_link);
 
             while let Some(link_idx) = link_iter.next(self.links) {
-                let out_link = self.links[link_idx.index()].ref_used();
+                let out_link = &self.links[link_idx.index()].link;
                 let next_node = out_link.target_node_idx.index();
                 if !seen_nodes.contains(next_node) {
                     if next_node == path_to {
