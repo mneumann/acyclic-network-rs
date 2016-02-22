@@ -4,7 +4,6 @@ extern crate rand;
 use fixedbitset::FixedBitSet;
 use rand::Rng;
 use std::fmt::Debug;
-use std::collections::BTreeMap;
 
 pub trait NodeType: Clone + Debug + Send + Sized {
     /// If the node allows incoming connections
@@ -14,12 +13,9 @@ pub trait NodeType: Clone + Debug + Send + Sized {
     fn accept_outgoing_links(&self) -> bool;
 }
 
-/// Every node has an external node id. In contrast
-/// to the `NodeIndex`, the ExternalNodeId can't become unstable
-/// during node removal. The `ExternalNodeId` is also
-/// used to sort the links.
+/// Every node or link contains an external id. In contrast
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ExternalNodeId(pub usize);
+pub struct ExternalId(pub usize);
 
 /// New type wrapping a node index. The node index is
 /// used as an internal index into the node array.
@@ -47,17 +43,23 @@ impl LinkIndex {
 
 // Wraps a Link for use in a single linked list
 #[derive(Clone, Debug)]
-enum LinkItem<L: Copy + Debug + Send + Sized> {
+enum LinkItem<L, EXTID>
+    where L: Copy + Debug + Send + Sized,
+          EXTID: Copy + Debug + Send + Sized + Ord
+{
     Free {
         next: Option<LinkIndex>,
     },
     Used {
         next: Option<LinkIndex>,
-        link: Link<L>,
+        link: Link<L, EXTID>,
     },
 }
 
-impl<L: Copy + Debug + Send + Sized> LinkItem<L> {
+impl<L, EXTID> LinkItem<L, EXTID>
+    where L: Copy + Debug + Send + Sized,
+          EXTID: Copy + Debug + Send + Sized + Ord
+{
     fn set_next_used(&mut self, next_used: Option<LinkIndex>) {
         match *self {
             LinkItem::Used { ref mut next, .. } => {
@@ -74,7 +76,7 @@ impl<L: Copy + Debug + Send + Sized> LinkItem<L> {
         }
     }
 
-    fn ref_used(&self) -> &Link<L> {
+    fn ref_used(&self) -> &Link<L, EXTID> {
         match *self {
             LinkItem::Used { ref link, .. } => link,
             _ => panic!(),
@@ -113,9 +115,10 @@ impl LinkIter {
         self.prev_link_idx
     }
 
-    fn next<L: Copy + Debug + Send + Sized>(&mut self,
-                                            link_array: &[LinkItem<L>])
-                                            -> Option<LinkIndex> {
+    fn next<L, EXTID>(&mut self, link_array: &[LinkItem<L, EXTID>]) -> Option<LinkIndex>
+        where L: Copy + Debug + Send + Sized,
+              EXTID: Copy + Debug + Send + Sized + Ord
+    {
         match self.next_link_idx {
             Some(idx) => {
                 self.prev_link_idx = Some(idx);
@@ -131,17 +134,30 @@ impl LinkIter {
 }
 
 #[derive(Clone, Debug)]
-struct Link<L: Copy + Debug + Send + Sized> {
+struct Link<L, EXTID>
+    where L: Copy + Debug + Send + Sized,
+          EXTID: Copy + Debug + Send + Sized + Ord
+{
     node_idx: NodeIndex,
     weight: L,
+    external_link_id: EXTID,
 
     // the activeness of a link has no influence on the
     // cycle detection.
     active: bool,
 }
 
+impl<L, EXTID> Link<L, EXTID>
+    where L: Copy + Debug + Send + Sized,
+          EXTID: Copy + Debug + Send + Sized + Ord
+{
+    pub fn external_link_id(&self) -> EXTID {
+        self.external_link_id
+    }
+}
+
 #[derive(Clone, Debug)]
-pub struct Node<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = ExternalNodeId> {
+pub struct Node<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = ExternalId> {
     node_type: N,
     external_node_id: EXTID,
     first_link: Option<LinkIndex>,
@@ -150,7 +166,7 @@ pub struct Node<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = External
     out_degree: u32,
 }
 
-impl<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = ExternalNodeId> Node<N, EXTID> {
+impl<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = ExternalId> Node<N, EXTID> {
     pub fn node_type(&self) -> &N {
         &self.node_type
     }
@@ -176,17 +192,16 @@ impl<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = ExternalNodeId> Nod
 #[derive(Clone, Debug)]
 pub struct Network<N: NodeType,
                    L: Copy + Debug + Send + Sized,
-                   EXTID: Copy + Debug + Send + Sized + Ord = ExternalNodeId>
+                   EXTID: Copy + Debug + Send + Sized + Ord = ExternalId>
 {
     nodes: Vec<Node<N, EXTID>>,
-    links: Vec<LinkItem<L>>, // XXX: Rename to link_items
+    links: Vec<LinkItem<L, EXTID>>, // XXX: Rename to link_items
     free_links: Option<LinkIndex>,
     node_count: usize,
     link_count: usize,
-    external_node_id_map: BTreeMap<EXTID, NodeIndex>,
 }
 
-impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + Sized + Ord = ExternalNodeId> Network<N, L, EXTID> {
+impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + Sized + Ord = ExternalId> Network<N, L, EXTID> {
     pub fn new() -> Network<N, L, EXTID> {
         Network {
             nodes: Vec::new(),
@@ -194,7 +209,6 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             free_links: None,
             node_count: 0,
             link_count: 0,
-            external_node_id_map: BTreeMap::new(),
         }
     }
 
@@ -219,12 +233,12 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
     }
 
     #[inline(always)]
-    fn link_item(&self, link_idx: LinkIndex) -> &LinkItem<L> {
+    fn link_item(&self, link_idx: LinkIndex) -> &LinkItem<L, EXTID> {
         &self.links[link_idx.index()]
     }
 
     #[inline(always)]
-    fn link(&self, link_idx: LinkIndex) -> &Link<L> {
+    fn link(&self, link_idx: LinkIndex) -> &Link<L, EXTID> {
         match self.links[link_idx.index()] {
             LinkItem::Used { ref link, .. } => link,
             LinkItem::Free { .. } => {
@@ -234,7 +248,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
     }
 
     #[inline(always)]
-    fn link_mut(&mut self, link_idx: LinkIndex) -> &mut Link<L> {
+    fn link_mut(&mut self, link_idx: LinkIndex) -> &mut Link<L, EXTID> {
         match self.links[link_idx.index()] {
             LinkItem::Used { ref mut link, ..} => link,
             LinkItem::Free { .. } => {
@@ -274,16 +288,12 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         }
     }
 
-/// Adds a new node to the network with type `node_type` and id `external_node_id`.
-///
-/// # Panics
-///
-/// If a node with `external_node_id` already exists in the network.
+/// Adds a new node to the network with type `node_type` and the associated
+/// id `external_node_id`. The `external_node_id` is stored in the node and
+/// can be retrieved later on.
 ///
     pub fn add_node(&mut self, node_type: N, external_node_id: EXTID) -> NodeIndex {
         let node_idx = NodeIndex(self.nodes.len());
-        let old = self.external_node_id_map.insert(external_node_id, node_idx);
-        assert!(old.is_none());
         self.nodes.push(Node {
             node_type: node_type,
             external_node_id: external_node_id,
@@ -295,7 +305,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         return node_idx;
     }
 
-    pub fn delete_node(&mut self, _external_node_id: EXTID) {
+    pub fn delete_node(&mut self, _node_idx: NodeIndex) {
         self.node_count -= 1;
         unimplemented!();
 // XXX
@@ -387,18 +397,14 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         Ok(())
     }
 
-    pub fn lookup_node_index(&self, external_node_id: EXTID) -> Option<NodeIndex> {
-        self.external_node_id_map.get(&external_node_id).map(|&i| i)
-    }
-
     // Note: Doesn't check for cycles (except in the simple reflexive case).
-// Note that we keep the list of links sorted according the the target node's
-// external node id.
+// Note that we keep the list of links sorted according to it's external_link_id.
 // XXX: Need test cases.
     pub fn add_link(&mut self,
                     source_node_idx: NodeIndex,
                     target_node_idx: NodeIndex,
-                    weight: L)
+                    weight: L,
+                    external_link_id: EXTID)
                     -> LinkIndex {
         if let Err(err) = self.valid_link(source_node_idx, target_node_idx) {
             panic!(err);
@@ -410,11 +416,12 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
 
         let link = Link {
             node_idx: target_node_idx,
+            external_link_id: external_link_id,
             weight: weight,
             active: true,
         };
 
-        match self.find_link_index(source_node_idx, target_node_idx) {
+        match self.find_link_index(source_node_idx, target_node_idx, Some(external_link_id)) {
             (Some(_), _) => {
                 panic!("duplicate link");
             }
@@ -435,7 +442,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         }
     }
 
-    fn allocate_link(&mut self, link: Link<L>, next_link: Option<LinkIndex>) -> LinkIndex {
+    fn allocate_link(&mut self, link: Link<L, EXTID>, next_link: Option<LinkIndex>) -> LinkIndex {
         if let Some(free_idx) = self.free_links {
             let next_free_idx = self.link_item(free_idx).next_free();
             self.free_links = next_free_idx;
@@ -465,7 +472,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                        target_node_idx: NodeIndex,
                        active: bool)
                        -> bool {
-        match self.find_link_index(source_node_idx, target_node_idx) {
+        match self.find_link_index(source_node_idx, target_node_idx, None) {
             (Some(link_idx), _) => {
                 self.link_mut(link_idx).active = active;
                 true
@@ -488,29 +495,36 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
 // (_, None) when no previous element exists (list is empty or contains one element).
     fn find_link_index(&self,
                        source_node_idx: NodeIndex,
-                       target_node_idx: NodeIndex)
+                       target_node_idx: NodeIndex,
+                       external_link_id: Option<EXTID>
+                       )
                        -> (Option<LinkIndex>, Option<LinkIndex>) {
-// we use the target_node's external node id as sort order.
-        let target_node_ext_id = self.node(target_node_idx).external_node_id();
+
+// the links are sorted according to their external link id.
+// if `external_link_id` is Some(), we abort the search once
+// the value is > than the current link.
 
         let mut link_iter = self.link_iter_for_node(source_node_idx);
         while let Some(link_idx) = link_iter.next(&self.links) {
             let link = self.link(link_idx);
 
-            let link_ext_id = self.node(link.node_idx).external_node_id();
-
 // We found the node we are looking for.
             if link.node_idx == target_node_idx {
-                debug_assert!(link_ext_id == target_node_ext_id);
+                if let Some(ext) = external_link_id {
+                    debug_assert!(link.external_link_id() == ext);
+                }
+
                 return (Some(link_idx), link_iter.get_prev());
             }
-            debug_assert!(link_ext_id != target_node_ext_id);
 
 // We keep the links sorted according to the target node's `external_node_id`.
 // If we are out of order, the link does not exist and a new link should be
 // inserted after the prev_link.
-            if link_ext_id > target_node_ext_id {
-                break;
+            if let Some(ext) = external_link_id {
+                debug_assert!(link.external_link_id() != ext);
+                if link.external_link_id() > ext {
+                    break;
+                }
             }
         }
         return (None, link_iter.get_prev());
@@ -518,7 +532,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
 
 /// Remove the first link that matches `source_node_idx` and `target_node_idx`.
     pub fn remove_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
-        let found_idx = match self.find_link_index(source_node_idx, target_node_idx) {
+        let found_idx = match self.find_link_index(source_node_idx, target_node_idx, None) {
             (Some(found_idx), Some(prev_idx)) => {
                 let next_used = self.link_item(found_idx).next_used();
                 self.links[prev_idx.index()].set_next_used(next_used);
@@ -557,7 +571,7 @@ struct CycleDetector<'a,
                      EXTID: Copy + Debug + Send + Sized + Ord + 'a>
 {
     nodes: &'a [Node<N, EXTID>],
-    links: &'a [LinkItem<L>],
+    links: &'a [LinkItem<L, EXTID>],
     nodes_to_visit: Vec<usize>,
     seen_nodes: FixedBitSet,
     dirty: bool,
@@ -624,7 +638,7 @@ impl<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a, EXTID: Copy + De
 #[cfg(test)]
 mod tests {
     use rand;
-    use super::{NodeType, Network, ExternalNodeId};
+    use super::{NodeType, Network, ExternalId};
 
     #[derive(Clone, Debug)]
     enum NodeT {
@@ -651,9 +665,9 @@ mod tests {
     #[test]
     fn test_cycle() {
         let mut g = Network::new();
-        let i1 = g.add_node(NodeT::Input, ExternalNodeId(1));
-        let h1 = g.add_node(NodeT::Hidden, ExternalNodeId(2));
-        let h2 = g.add_node(NodeT::Hidden, ExternalNodeId(3));
+        let i1 = g.add_node(NodeT::Input, ExternalId(1));
+        let h1 = g.add_node(NodeT::Hidden, ExternalId(2));
+        let h2 = g.add_node(NodeT::Hidden, ExternalId(3));
         assert_eq!(true, g.valid_link(i1, i1).is_err());
         assert_eq!(true, g.valid_link(h1, h1).is_err());
 
@@ -666,7 +680,7 @@ mod tests {
         assert_eq!((0, 0), g.node(h1).in_out_degree());
         assert_eq!((0, 0), g.node(h2).in_out_degree());
 
-        g.add_link(i1, h1, 0.0);
+        g.add_link(i1, h1, 0.0, ExternalId(1));
         assert_eq!((0, 1), g.node(i1).in_out_degree());
         assert_eq!((1, 0), g.node(h1).in_out_degree());
         assert_eq!((0, 0), g.node(h2).in_out_degree());
@@ -679,7 +693,7 @@ mod tests {
         assert_eq!(false, g.link_would_cycle(h2, h1));
         assert_eq!(false, g.link_would_cycle(h2, i1));
 
-        g.add_link(h1, h2, 0.0);
+        g.add_link(h1, h2, 0.0, ExternalId(2));
         assert_eq!((0, 1), g.node(i1).in_out_degree());
         assert_eq!((1, 1), g.node(h1).in_out_degree());
         assert_eq!((1, 0), g.node(h2).in_out_degree());
@@ -691,23 +705,11 @@ mod tests {
     }
 
     #[test]
-    fn test_lookup_ext_id() {
-        let mut g: Network<_, f64> = Network::new();
-        let i1 = g.add_node(NodeT::Input, ExternalNodeId(1));
-        let h1 = g.add_node(NodeT::Hidden, ExternalNodeId(2));
-        let h2 = g.add_node(NodeT::Hidden, ExternalNodeId(3));
-        assert_eq!(Some(i1), g.lookup_node_index(ExternalNodeId(1)));
-        assert_eq!(Some(h1), g.lookup_node_index(ExternalNodeId(2)));
-        assert_eq!(Some(h2), g.lookup_node_index(ExternalNodeId(3)));
-        assert_eq!(None, g.lookup_node_index(ExternalNodeId(4)));
-    }
-
-    #[test]
     fn test_find_random_unconnected_link_no_cycle() {
         let mut g = Network::new();
-        let i1 = g.add_node(NodeT::Input, ExternalNodeId(1));
-        let o1 = g.add_node(NodeT::Output, ExternalNodeId(2));
-        let o2 = g.add_node(NodeT::Output, ExternalNodeId(3));
+        let i1 = g.add_node(NodeT::Input, ExternalId(1));
+        let o1 = g.add_node(NodeT::Output, ExternalId(2));
+        let o2 = g.add_node(NodeT::Output, ExternalId(3));
 
         let mut rng = rand::thread_rng();
 
@@ -716,12 +718,12 @@ mod tests {
         let l = link.unwrap();
         assert!((i1, o1) == l || (i1, o2) == l);
 
-        g.add_link(i1, o2, 0.0);
+        g.add_link(i1, o2, 0.0, ExternalId(1));
         let link = g.find_random_unconnected_link_no_cycle(&mut rng);
         assert_eq!(true, link.is_some());
         assert_eq!((i1, o1), link.unwrap());
 
-        g.add_link(i1, o1, 0.0);
+        g.add_link(i1, o1, 0.0, ExternalId(2));
         let link = g.find_random_unconnected_link_no_cycle(&mut rng);
         assert_eq!(false, link.is_some());
     }
