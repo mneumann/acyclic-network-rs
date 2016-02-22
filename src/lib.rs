@@ -60,7 +60,6 @@ pub struct LinkIter<'a, L, EXTID>
           EXTID: Copy + Debug + Send + Sized + Ord + 'a
 {
     next_link_idx: Option<LinkIndex>,
-    prev_link_idx: Option<LinkIndex>,
     link_array: &'a [LinkItem<L, EXTID>],
 }
 
@@ -71,13 +70,8 @@ impl<'a, L, EXTID> LinkIter<'a, L, EXTID>
     fn new(link_idx_opt: Option<LinkIndex>, link_array: &'a [LinkItem<L, EXTID>]) -> Self {
         LinkIter {
             next_link_idx: link_idx_opt,
-            prev_link_idx: None,
             link_array: link_array,
         }
-    }
-
-    fn get_prev(&self) -> Option<LinkIndex> {
-        self.prev_link_idx
     }
 }
 
@@ -90,13 +84,11 @@ impl<'a, L, EXTID> Iterator for LinkIter<'a, L, EXTID>
     fn next(&mut self) -> Option<Self::Item> {
         match self.next_link_idx {
             Some(idx) => {
-                self.prev_link_idx = Some(idx);
                 let item = &self.link_array[idx.index()];
                 self.next_link_idx = item.next;
                 return Some((idx, &item.link));
             }
             None => {
-                // Do not update the prev_link_idx
                 return None;
             }
         }
@@ -407,6 +399,78 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         self.set_link_status(source_node_idx, target_node_idx, false)
     }
 
+    pub fn first_link_of_node(&self, node_idx: NodeIndex) -> Option<&Link<L, EXTID>> {
+        self.node(node_idx).links.head.map(|link_idx| self.link(link_idx))
+    }
+
+    pub fn last_link_of_node(&self, node_idx: NodeIndex) -> Option<&Link<L, EXTID>> {
+        self.node(node_idx).links.tail.map(|link_idx| self.link(link_idx))
+    }
+
+    fn append(&mut self, node_idx: NodeIndex, link: Link<L, EXTID>) -> LinkIndex {
+        match (self.node(node_idx).links.head, self.node(node_idx).links.tail) {
+            (None, None) => {
+                // append onto empty list
+                let new_link_idx = self.allocate_link_item(LinkItem{
+                    link: link,
+                    prev: None,
+                    next: None,
+                });
+                self.node_mut(node_idx).links = List {
+                    head: Some(new_link_idx),
+                    tail: Some(new_link_idx),
+                };
+                return new_link_idx;
+            }
+            (Some(_), Some(tail)) => {
+                let new_link_idx = self.allocate_link_item(LinkItem {
+                    link: link,
+                    prev: Some(tail),
+                    next: None,
+                });
+                assert!(self.links[tail.index()].next == None);
+                self.links[tail.index()].next = Some(new_link_idx);
+                self.node_mut(node_idx).links.tail = Some(new_link_idx);
+                return new_link_idx;
+            }
+            _ => {
+                panic!()
+            }
+        }
+    }
+
+    fn prepend(&mut self, node_idx: NodeIndex, link: Link<L, EXTID>) -> LinkIndex {
+        match (self.node(node_idx).links.head, self.node(node_idx).links.tail) {
+            (None, None) => {
+                // prepend to empty list. same as append
+                let new_link_idx = self.allocate_link_item(LinkItem{
+                    link: link,
+                    prev: None,
+                    next: None,
+                });
+                self.node_mut(node_idx).links = List {
+                    head: Some(new_link_idx),
+                    tail: Some(new_link_idx),
+                };
+                return new_link_idx;
+            }
+            (Some(head), Some(_tail)) => {
+                let new_link_idx = self.allocate_link_item(LinkItem {
+                    link: link,
+                    prev: None,
+                    next: Some(head),
+                });
+                assert!(self.links[head.index()].prev == None);
+                self.links[head.index()].prev = Some(new_link_idx);
+                self.node_mut(node_idx).links.head = Some(new_link_idx);
+                return new_link_idx;
+            }
+            _ => {
+                panic!()
+            }
+        }
+    }
+
     // Note: Doesn't check for cycles (except in the simple reflexive case).
 // Note that we keep the list of links sorted according to it's external_link_id.
 // XXX: Need test cases.
@@ -432,73 +496,63 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             active: true,
         };
 
-        match self.find_link_index_insert(source_node_idx, target_node_idx, external_link_id) {
+        match self.find_link_index_insert_before(source_node_idx, target_node_idx, external_link_id) {
             None => {
-// prepend
-                let next_link = self.node(source_node_idx).links.head;
-                let new_link_idx = self.allocate_link_item(LinkItem{
-                    link: link,
-                    prev: None,
-                    next: next_link,
-                });
-
-                if let Some(next) = next_link {
-// there is more than one element already in the list
-                    assert!(self.node(source_node_idx).links.tail.is_some());
-                    self.links[next.index()].prev = Some(new_link_idx);
-                } else {
-// empty list
-                    assert!(self.node(source_node_idx).links.tail.is_none());
-                    self.node_mut(source_node_idx).links.tail = Some(new_link_idx);
+                if let Some(tail) = self.node(source_node_idx).links.tail {
+// check if last element is equal
+                    if self.link(tail).target_node_idx == target_node_idx {
+                        assert!(self.link(tail).external_link_id == external_link_id);
+                        panic!("Duplicate link");
+                    }
                 }
-
-                self.node_mut(source_node_idx).links.head = Some(new_link_idx);
-                return new_link_idx;
+// append at end.
+                return self.append(source_node_idx, link);
             }
             Some(idx) => {
-                if self.link(idx).target_node_idx == target_node_idx {
-                    assert!(self.link(idx).external_link_id == external_link_id);
-                    panic!("Duplicate link");
-                }
-                let next_link = self.link_item(idx).next;
-// insert new link after `idx`
-                let new_link_idx = self.allocate_link_item(LinkItem{
-                    link: link,
-                    prev: Some(idx),
-                    next: next_link,
-                });
-                self.links[idx.index()].next = Some(new_link_idx);
+                match self.link_item(idx).prev {
+                    None => {
+                        return self.prepend(source_node_idx, link);
+                    }
+                    Some(insert_after) => {
+// check if previous element is not equal
+                        if self.link(insert_after).target_node_idx == target_node_idx {
+                            assert!(self.link(insert_after).external_link_id == external_link_id);
+                            panic!("Duplicate link");
+                        }
 
-                if let Some(next) = next_link {
-                    assert!(self.node(source_node_idx).links.tail.is_some());
-                    self.links[next.index()].prev = Some(new_link_idx);
-                } else {
-// the previous element was the tail of the list
-                    assert!(self.node(source_node_idx).links.tail == Some(idx));
-// make our new element the tail of the list.
-                    self.node_mut(source_node_idx).links.tail = Some(new_link_idx);
+                        let new_link_idx = self.allocate_link_item(LinkItem{
+                            link: link,
+                            prev: Some(insert_after),
+                            next: Some(idx),
+                        });
+
+                        self.links[insert_after.index()].next = Some(new_link_idx);
+                        self.links[idx.index()].prev = Some(new_link_idx);
+
+                        return new_link_idx;
+                    }
                 }
 
-                return new_link_idx;
+
+
             }
         }
     }
 
-// returns the index of the last element whoose external link id is still <= than
-// `external_link_id`.
-    fn find_link_index_insert(&self,
+// Returns the index of the first element whoose external link id >  `external_link_id`.
+    fn find_link_index_insert_before(&self,
                        source_node_idx: NodeIndex,
                        _target_node_idx: NodeIndex,
                        external_link_id: EXTID)
                        -> Option<LinkIndex> {
 // the links are sorted according to their external link id.
         let mut link_iter = self.link_iter_for_node(source_node_idx);
-        for (_, link) in &mut link_iter {
+        for (idx, link) in &mut link_iter {
             if link.external_link_id() > external_link_id {
-                break;
+                return Some(idx);
             }
         }
-        return link_iter.get_prev();
+        return None;
     }
 
     fn find_link_index_exact(&self,
@@ -751,6 +805,11 @@ mod tests {
         g.add_link(i1, h1, 0.0, ExternalId(2));
         g.add_link(i1, h2, 0.0, ExternalId(1));
 
+        assert_eq!(ExternalId(1),
+                   g.first_link_of_node(i1).unwrap().external_link_id());
+        assert_eq!(ExternalId(2),
+                   g.last_link_of_node(i1).unwrap().external_link_id());
+
         assert_eq!(2, g.node(i1).out_degree());
         assert_eq!(1, g.node(h1).in_degree());
         assert_eq!(1, g.node(h2).in_degree());
@@ -762,17 +821,30 @@ mod tests {
         assert_eq!(1, g.node(h2).in_degree());
         assert_eq!(1, g.link_count());
 
+        assert_eq!(ExternalId(1),
+                   g.first_link_of_node(i1).unwrap().external_link_id());
+        assert_eq!(ExternalId(1),
+                   g.last_link_of_node(i1).unwrap().external_link_id());
+
         assert_eq!(false, g.remove_link(i1, h1));
         assert_eq!(1, g.node(i1).out_degree());
         assert_eq!(0, g.node(h1).in_degree());
         assert_eq!(1, g.node(h2).in_degree());
         assert_eq!(1, g.link_count());
 
+        assert_eq!(ExternalId(1),
+                   g.first_link_of_node(i1).unwrap().external_link_id());
+        assert_eq!(ExternalId(1),
+                   g.last_link_of_node(i1).unwrap().external_link_id());
+
         assert_eq!(true, g.remove_link(i1, h2));
         assert_eq!(0, g.node(i1).out_degree());
         assert_eq!(0, g.node(h1).in_degree());
         assert_eq!(0, g.node(h2).in_degree());
         assert_eq!(0, g.link_count());
+
+        assert!(g.first_link_of_node(i1).is_none());
+        assert!(g.last_link_of_node(i1).is_none());
 
         // XXX: test for sort order
     }
