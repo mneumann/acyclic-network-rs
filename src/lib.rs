@@ -42,14 +42,89 @@ impl LinkIndex {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum NextLink {
-    // End of list
-    EndOfChain,
-    // Points at the next link.
-    At(LinkIndex),
-    // Used in the free-list.
-    Free(LinkIndex),
+// Wraps a Link for use in a single linked list
+#[derive(Clone, Debug)]
+enum LinkItem<L: Copy + Debug + Send + Sized> {
+    Free {
+        next: Option<LinkIndex>,
+    },
+    Used {
+        next: Option<LinkIndex>,
+        link: Link<L>,
+    },
+}
+
+impl<L: Copy + Debug + Send + Sized> LinkItem<L> {
+    fn set_next_used(&mut self, next_used: Option<LinkIndex>) {
+        match *self {
+            LinkItem::Used { ref mut next, .. } => {
+                *next = next_used;
+            }
+            _ => panic!(),
+        }
+    }
+
+    fn next_used(&self) -> Option<LinkIndex> {
+        match *self {
+            LinkItem::Used { next, .. } => next,
+            _ => panic!(),
+        }
+    }
+
+    fn ref_used(&self) -> &Link<L> {
+        match *self {
+            LinkItem::Used { ref link, .. } => link,
+            _ => panic!(),
+        }
+    }
+
+    fn next_free(&self) -> Option<LinkIndex> {
+        match *self {
+            LinkItem::Free { next } => next,
+            _ => panic!(),
+        }
+    }
+
+    fn is_used(&self) -> bool {
+        match *self {
+            LinkItem::Used { .. } => true,
+            _ => false,
+        }
+    }
+}
+
+struct LinkIter {
+    next_link_idx: Option<LinkIndex>,
+    prev_link_idx: Option<LinkIndex>,
+}
+
+impl LinkIter {
+    fn from(link_idx_opt: Option<LinkIndex>) -> LinkIter {
+        LinkIter {
+            next_link_idx: link_idx_opt,
+            prev_link_idx: None,
+        }
+    }
+
+    fn get_prev(&self) -> Option<LinkIndex> {
+        self.prev_link_idx
+    }
+
+    fn next<L: Copy + Debug + Send + Sized>(&mut self,
+                                            link_array: &[LinkItem<L>])
+                                            -> Option<LinkIndex> {
+        match self.next_link_idx {
+            Some(idx) => {
+                self.prev_link_idx = Some(idx);
+                self.next_link_idx = link_array[idx.index()].next_used();
+                return Some(idx);
+            }
+            None => {
+                // Do not update the prev_link_idx
+                return None;
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -60,15 +135,12 @@ struct Link<L: Copy + Debug + Send + Sized> {
     // the activeness of a link has no influence on the
     // cycle detection.
     active: bool,
-
-    // Points to the next link of the node this link belongs to.
-    next_link: NextLink,
 }
 
 #[derive(Clone, Debug)]
 pub struct Node<N: NodeType> {
     node_type: N,
-    first_link: NextLink,
+    first_link: Option<LinkIndex>,
     // in and out degree counts disabled links!
     in_degree: u32,
     out_degree: u32,
@@ -96,8 +168,8 @@ impl<N: NodeType> Node<N> {
 #[derive(Clone, Debug)]
 pub struct Network<N: NodeType, L: Copy + Debug + Send + Sized> {
     nodes: Vec<Node<N>>,
-    links: Vec<Link<L>>,
-    free_links: NextLink,
+    links: Vec<LinkItem<L>>,
+    free_links: Option<LinkIndex>,
     node_count: usize,
     link_count: usize,
 }
@@ -107,7 +179,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         Network {
             nodes: Vec::new(),
             links: Vec::new(),
-            free_links: NextLink::EndOfChain,
+            free_links: None,
             node_count: 0,
             link_count: 0,
         }
@@ -129,8 +201,33 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
     }
 
     #[inline(always)]
-    fn link(&self, link_idx: LinkIndex) -> &Link<L> {
+    pub fn node_mut(&mut self, node_idx: NodeIndex) -> &mut Node<N> {
+        &mut self.nodes[node_idx.index()]
+    }
+
+    #[inline(always)]
+    fn link_item(&self, link_idx: LinkIndex) -> &LinkItem<L> {
         &self.links[link_idx.index()]
+    }
+
+    #[inline(always)]
+    fn link(&self, link_idx: LinkIndex) -> &Link<L> {
+        match self.links[link_idx.index()] {
+            LinkItem::Used { ref link, .. } => link,
+            LinkItem::Free { .. } => {
+                panic!();
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn link_mut(&mut self, link_idx: LinkIndex) -> &mut Link<L> {
+        match self.links[link_idx.index()] {
+            LinkItem::Used { ref mut link, ..} => link,
+            LinkItem::Free { .. } => {
+                panic!();
+            }
+        }
     }
 
     #[inline(always)]
@@ -152,17 +249,20 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         }
     }
 
+    fn link_iter_for_node(&self, node_idx: NodeIndex) -> LinkIter {
+        LinkIter::from(self.node(node_idx).first_link)
+    }
+
     #[inline]
     pub fn each_active_forward_link_of_node<F>(&self, node_idx: NodeIndex, mut f: F)
         where F: FnMut(NodeIndex, L)
     {
-        let mut current_link = self.nodes[node_idx.index()].first_link;
-        while let NextLink::At(link_idx) = current_link {
-            let link = &self.links[link_idx.index()];
+        let mut link_iter = self.link_iter_for_node(node_idx);
+        while let Some(link_idx) = link_iter.next(&self.links) {
+            let link = self.link(link_idx);
             if link.active {
                 f(link.node_idx, link.weight);
             }
-            current_link = link.next_link;
         }
     }
 
@@ -170,7 +270,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         let idx = NodeIndex(self.nodes.len());
         self.nodes.push(Node {
             node_type: node_type,
-            first_link: NextLink::EndOfChain,
+            first_link: None,
             in_degree: 0,
             out_degree: 0,
         });
@@ -199,17 +299,14 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         // Build up a binary, undirected adjacency matrix of the graph.
         // Every unset bit in the adj_matrix will be a potential link.
         for (i, node) in self.nodes.iter().enumerate() {
-
-            let mut current_link = node.first_link;
-            while let NextLink::At(link_idx) = current_link {
-                let link = &self.links[link_idx.index()];
+            let mut link_iter = LinkIter::from(node.first_link);
+            while let Some(link_idx) = link_iter.next(&self.links) {
+                let link = self.link(link_idx);
                 let j = link.node_idx.index();
                 adj_matrix.insert(idx(i, j));
                 // include the link of reverse direction, because this would
                 // create a cycle anyway.
                 adj_matrix.insert(idx(j, i));
-
-                current_link = link.next_link;
             }
         }
 
@@ -286,8 +383,14 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         }
 
         self.link_count += 1;
-        self.nodes[source_node_idx.index()].out_degree += 1;
-        self.nodes[target_node_idx.index()].in_degree += 1;
+        self.node_mut(source_node_idx).out_degree += 1;
+        self.node_mut(target_node_idx).in_degree += 1;
+
+        let link = Link {
+            node_idx: target_node_idx,
+            weight: weight,
+            active: true,
+        };
 
         match self.find_link_index(source_node_idx, target_node_idx) {
             (Some(_), _) => {
@@ -295,55 +398,42 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
             }
             (None, Some(prev_link_idx)) => {
                 // we should insert the node after prev_link_idx.
-                let next_link = self.link(prev_link_idx).next_link;
-                let new_link_idx = self.allocate_link(target_node_idx, weight, next_link);
-                self.links[prev_link_idx.index()].next_link = NextLink::At(new_link_idx);
+                let next_link = self.link_item(prev_link_idx).next_used();
+                let new_link_idx = self.allocate_link(link, next_link);
+                self.links[prev_link_idx.index()].set_next_used(Some(new_link_idx));
                 return new_link_idx;
             }
             (None, None) => {
                 // prepend.
                 let next_link = self.node(source_node_idx).first_link;
-                let new_link_idx = self.allocate_link(target_node_idx, weight, next_link);
-                self.nodes[source_node_idx.index()].first_link = NextLink::At(new_link_idx);
+                let new_link_idx = self.allocate_link(link, next_link);
+                self.node_mut(source_node_idx).first_link = Some(new_link_idx);
                 return new_link_idx;
             }
         }
     }
 
-    fn allocate_link(&mut self,
-                     link_to_node_idx: NodeIndex,
-                     weight: L,
-                     next_link: NextLink)
-                     -> LinkIndex {
-        if let NextLink::Free(free_idx) = self.free_links {
-            let next_free_idx = self.link(free_idx).next_link;
-            match next_free_idx {
-                NextLink::EndOfChain | NextLink::Free(_) => {
-                    // OK
-                }
-                NextLink::At(_) => {
-                    panic!();
-                }
-            }
+    fn allocate_link(&mut self, link: Link<L>, next_link: Option<LinkIndex>) -> LinkIndex {
+        if let Some(free_idx) = self.free_links {
+            let next_free_idx = self.link_item(free_idx).next_free();
             self.free_links = next_free_idx;
 
-            self.links[free_idx.index()] = Link {
-                node_idx: link_to_node_idx,
-                weight: weight,
-                active: true,
-                next_link: next_link,
+            if let LinkItem::Used { .. } = self.links[free_idx.index()] {
+                panic!("Trying to reuse an link item which is in use!");
+            }
+
+            self.links[free_idx.index()] = LinkItem::Used {
+                link: link,
+                next: next_link,
             };
 
             return free_idx;
         } else {
             let new_link_idx = LinkIndex(self.links.len());
-            self.links.push(Link {
-                node_idx: link_to_node_idx,
-                weight: weight,
-                active: true,
-                next_link: next_link,
+            self.links.push(LinkItem::Used {
+                link: link,
+                next: next_link,
             });
-
             return new_link_idx;
         }
     }
@@ -355,7 +445,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
                        -> bool {
         match self.find_link_index(source_node_idx, target_node_idx) {
             (Some(link_idx), _) => {
-                self.links[link_idx.index()].active = active;
+                self.link_mut(link_idx).active = active;
                 true
             }
             _ => false,
@@ -378,42 +468,40 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
                        source_node_idx: NodeIndex,
                        target_node_idx: NodeIndex)
                        -> (Option<LinkIndex>, Option<LinkIndex>) {
-
         // we use the target_node for the sort order.
         let target_node_type = self.node(target_node_idx).node_type();
 
-        let mut prev_link = None;
-        let mut current_link = self.node(source_node_idx).first_link;
-        while let NextLink::At(link_idx) = current_link {
+        let mut link_iter = self.link_iter_for_node(source_node_idx);
+        while let Some(link_idx) = link_iter.next(&self.links) {
             let link = self.link(link_idx);
 
+            // We found the node we are looking for.
             if link.node_idx == target_node_idx {
-                return (Some(link_idx), prev_link);
+                return (Some(link_idx), link_iter.get_prev());
             }
 
             // If we are out of order, the link does not exist and a new link should be
             // inserted after the prev_link.
             if let Some(false) = target_node_type.in_order(self.node(link.node_idx).node_type()) {
-                return (None, prev_link);
+                return (None, link_iter.get_prev());
             }
-
-            prev_link = Some(link_idx);
-            current_link = link.next_link;
         }
-        return (None, prev_link);
+        return (None, link_iter.get_prev());
     }
 
     /// Remove the first link that matches `source_node_idx` and `target_node_idx`.
     pub fn remove_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
         let found_idx = match self.find_link_index(source_node_idx, target_node_idx) {
             (Some(found_idx), Some(prev_idx)) => {
-                self.links[prev_idx.index()].next_link = self.links[found_idx.index()].next_link;
+                let next_used = self.link_item(found_idx).next_used();
+                self.links[prev_idx.index()].set_next_used(next_used);
                 found_idx
             }
             (Some(found_idx), None) => {
                 // `found_idx` is the first item in the list.
-                assert!(self.nodes[source_node_idx.index()].first_link == NextLink::At(found_idx));
-                self.nodes[source_node_idx.index()].first_link = NextLink::EndOfChain;
+                assert!(self.node(source_node_idx).first_link == Some(found_idx));
+                assert!(self.link_item(found_idx).next_used().is_none());
+                self.node_mut(source_node_idx).first_link = None;
                 found_idx
             }
             (None, _) => {
@@ -422,15 +510,15 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
             }
         };
 
-        // XXX: Clear out the data in Link
         // push found_idx on free list
-        self.links[found_idx.index()].next_link = self.free_links;
-        self.free_links = NextLink::Free(found_idx);
+        assert!(self.links[found_idx.index()].is_used());
+        self.links[found_idx.index()] = LinkItem::Free { next: self.free_links };
+        self.free_links = Some(found_idx);
 
-        assert!(self.nodes[source_node_idx.index()].out_degree > 0);
-        assert!(self.nodes[target_node_idx.index()].in_degree > 0);
-        self.nodes[source_node_idx.index()].out_degree -= 1;
-        self.nodes[target_node_idx.index()].in_degree -= 1;
+        assert!(self.node(source_node_idx).out_degree > 0);
+        assert!(self.node(target_node_idx).in_degree > 0);
+        self.node_mut(source_node_idx).out_degree -= 1;
+        self.node_mut(target_node_idx).in_degree -= 1;
         self.link_count -= 1;
         return true;
     }
@@ -438,7 +526,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
 
 struct CycleDetector<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a> {
     nodes: &'a [Node<N>],
-    links: &'a [Link<L>],
+    links: &'a [LinkItem<L>],
     nodes_to_visit: Vec<usize>,
     seen_nodes: FixedBitSet,
     dirty: bool,
@@ -480,10 +568,10 @@ impl<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a> CycleDetector<'a
         seen_nodes.insert(path_from);
 
         while let Some(visit_node) = nodes_to_visit.pop() {
-            let mut current_link = nodes[visit_node].first_link;
+            let mut link_iter = LinkIter::from(nodes[visit_node].first_link);
 
-            while let NextLink::At(link_idx) = current_link {
-                let out_link = &self.links[link_idx.index()];
+            while let Some(link_idx) = link_iter.next(self.links) {
+                let out_link = self.links[link_idx.index()].ref_used();
                 let next_node = out_link.node_idx.index();
                 if !seen_nodes.contains(next_node) {
                     if next_node == path_to {
@@ -494,8 +582,6 @@ impl<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a> CycleDetector<'a
                     seen_nodes.insert(next_node);
                     nodes_to_visit.push(next_node)
                 }
-
-                current_link = out_link.next_link;
             }
         }
 
