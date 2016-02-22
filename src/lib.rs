@@ -138,7 +138,8 @@ struct Link<L, EXTID>
     where L: Copy + Debug + Send + Sized,
           EXTID: Copy + Debug + Send + Sized + Ord
 {
-    node_idx: NodeIndex,
+    source_node_idx: NodeIndex,
+    target_node_idx: NodeIndex,
     weight: L,
     external_link_id: EXTID,
 
@@ -283,7 +284,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         while let Some(link_idx) = link_iter.next(&self.links) {
             let link = self.link(link_idx);
             if link.active {
-                f(link.node_idx, link.weight);
+                f(link.target_node_idx, link.weight);
             }
         }
     }
@@ -329,7 +330,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             let mut link_iter = LinkIter::from(node.first_link);
             while let Some(link_idx) = link_iter.next(&self.links) {
                 let link = self.link(link_idx);
-                let j = link.node_idx.index();
+                let j = link.target_node_idx.index();
                 adj_matrix.insert(idx(i, j));
 // include the link of reverse direction, because this would
 // create a cycle anyway.
@@ -415,7 +416,8 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         self.node_mut(target_node_idx).in_degree += 1;
 
         let link = Link {
-            node_idx: target_node_idx,
+            source_node_idx: source_node_idx,
+            target_node_idx: target_node_idx,
             external_link_id: external_link_id,
             weight: weight,
             active: true,
@@ -509,7 +511,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             let link = self.link(link_idx);
 
 // We found the node we are looking for.
-            if link.node_idx == target_node_idx {
+            if link.target_node_idx == target_node_idx {
                 if let Some(ext) = external_link_id {
                     debug_assert!(link.external_link_id() == ext);
                 }
@@ -617,7 +619,7 @@ impl<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a, EXTID: Copy + De
 
             while let Some(link_idx) = link_iter.next(self.links) {
                 let out_link = self.links[link_idx.index()].ref_used();
-                let next_node = out_link.node_idx.index();
+                let next_node = out_link.target_node_idx.index();
                 if !seen_nodes.contains(next_node) {
                     if next_node == path_to {
                         // We found a path to `path_to`. We have found a cycle.
