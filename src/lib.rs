@@ -76,8 +76,15 @@ impl<'a, L, EXTID> LinkIter<'a, L, EXTID>
     fn get_prev(&self) -> Option<LinkIndex> {
         self.prev_link_idx
     }
+}
 
-    fn next(&mut self) -> Option<LinkIndex> {
+impl<'a, L, EXTID> Iterator for LinkIter<'a, L, EXTID>
+    where L: Copy + Debug + Send + Sized + 'a,
+          EXTID: Copy + Debug + Send + Sized + Ord + 'a
+{
+    type Item = LinkIndex;
+
+    fn next(&mut self) -> Option<Self::Item> {
         match self.next_link_idx {
             Some(idx) => {
                 self.prev_link_idx = Some(idx);
@@ -227,8 +234,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
     pub fn each_active_forward_link_of_node<F>(&self, node_idx: NodeIndex, mut f: F)
         where F: FnMut(NodeIndex, L)
     {
-        let mut link_iter = self.link_iter_for_node(node_idx);
-        while let Some(link_idx) = link_iter.next() {
+        for link_idx in self.link_iter_for_node(node_idx) {
             let link = self.link(link_idx);
             if link.active {
                 f(link.target_node_idx, link.weight);
@@ -274,8 +280,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
 // Build up a binary, undirected adjacency matrix of the graph.
 // Every unset bit in the adj_matrix will be a potential link.
         for (i, node) in self.nodes.iter().enumerate() {
-            let mut link_iter = LinkIter::new(node.first_link, &self.links);
-            while let Some(link_idx) = link_iter.next() {
+            for link_idx in LinkIter::new(node.first_link, &self.links) {
                 let link = self.link(link_idx);
                 let j = link.target_node_idx.index();
                 adj_matrix.insert(idx(i, j));
@@ -437,7 +442,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                        -> Option<LinkIndex> {
 // the links are sorted according to their external link id.
         let mut link_iter = self.link_iter_for_node(source_node_idx);
-        while let Some(link_idx) = link_iter.next() {
+        for link_idx in &mut link_iter {
             let link = self.link(link_idx);
 
             if link.external_link_id() > external_link_id {
@@ -451,8 +456,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                        source_node_idx: NodeIndex,
                        target_node_idx: NodeIndex)
                        -> Option<LinkIndex> {
-        let mut link_iter = self.link_iter_for_node(source_node_idx);
-        while let Some(link_idx) = link_iter.next() {
+        for link_idx in self.link_iter_for_node(source_node_idx) {
 // We found the node we are looking for.
             if self.link(link_idx).target_node_idx == target_node_idx {
                 return Some(link_idx);
@@ -603,9 +607,7 @@ impl<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a, EXTID: Copy + De
         seen_nodes.insert(path_from);
 
         while let Some(visit_node) = nodes_to_visit.pop() {
-            let mut link_iter = LinkIter::new(nodes[visit_node].first_link, self.links);
-
-            while let Some(link_idx) = link_iter.next() {
+            for link_idx in LinkIter::new(nodes[visit_node].first_link, self.links) {
                 let out_link = &self.links[link_idx.index()].link;
                 let next_node = out_link.target_node_idx.index();
                 if !seen_nodes.contains(next_node) {
