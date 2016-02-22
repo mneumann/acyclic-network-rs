@@ -141,21 +141,21 @@ struct Link<L: Copy + Debug + Send + Sized> {
 }
 
 #[derive(Clone, Debug)]
-pub struct Node<N: NodeType> {
+pub struct Node<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = ExternalNodeId> {
     node_type: N,
-    external_node_id: ExternalNodeId,
+    external_node_id: EXTID,
     first_link: Option<LinkIndex>,
     // in and out degree counts disabled links!
     in_degree: u32,
     out_degree: u32,
 }
 
-impl<N: NodeType> Node<N> {
+impl<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = ExternalNodeId> Node<N, EXTID> {
     pub fn node_type(&self) -> &N {
         &self.node_type
     }
 
-    pub fn external_node_id(&self) -> ExternalNodeId {
+    pub fn external_node_id(&self) -> EXTID {
         self.external_node_id
     }
 
@@ -174,17 +174,20 @@ impl<N: NodeType> Node<N> {
 
 /// A directed, acylic network.
 #[derive(Clone, Debug)]
-pub struct Network<N: NodeType, L: Copy + Debug + Send + Sized> {
-    nodes: Vec<Node<N>>,
+pub struct Network<N: NodeType,
+                   L: Copy + Debug + Send + Sized,
+                   EXTID: Copy + Debug + Send + Sized + Ord = ExternalNodeId>
+{
+    nodes: Vec<Node<N, EXTID>>,
     links: Vec<LinkItem<L>>, // XXX: Rename to link_items
     free_links: Option<LinkIndex>,
     node_count: usize,
     link_count: usize,
-    external_node_id_map: BTreeMap<ExternalNodeId, NodeIndex>,
+    external_node_id_map: BTreeMap<EXTID, NodeIndex>,
 }
 
-impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
-    pub fn new() -> Network<N, L> {
+impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + Sized + Ord = ExternalNodeId> Network<N, L, EXTID> {
+    pub fn new() -> Network<N, L, EXTID> {
         Network {
             nodes: Vec::new(),
             links: Vec::new(),
@@ -206,12 +209,12 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
     }
 
     #[inline(always)]
-    pub fn node(&self, node_idx: NodeIndex) -> &Node<N> {
+    pub fn node(&self, node_idx: NodeIndex) -> &Node<N, EXTID> {
         &self.nodes[node_idx.index()]
     }
 
     #[inline(always)]
-    fn node_mut(&mut self, node_idx: NodeIndex) -> &mut Node<N> {
+    fn node_mut(&mut self, node_idx: NodeIndex) -> &mut Node<N, EXTID> {
         &mut self.nodes[node_idx.index()]
     }
 
@@ -241,13 +244,13 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
     }
 
     #[inline(always)]
-    pub fn nodes(&self) -> &[Node<N>] {
+    pub fn nodes(&self) -> &[Node<N, EXTID>] {
         &self.nodes
     }
 
     #[inline]
     pub fn each_node_with_index<F>(&self, mut f: F)
-        where F: FnMut(&Node<N>, NodeIndex)
+        where F: FnMut(&Node<N, EXTID>, NodeIndex)
     {
         for (i, node) in self.nodes.iter().enumerate() {
             f(node, NodeIndex(i));
@@ -271,13 +274,13 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         }
     }
 
-    /// Adds a new node to the network with type `node_type` and id `external_node_id`.
-    ///
-    /// # Panics
-    ///
-    /// If a node with `external_node_id` already exists in the network.
-    ///
-    pub fn add_node(&mut self, node_type: N, external_node_id: ExternalNodeId) -> NodeIndex {
+/// Adds a new node to the network with type `node_type` and id `external_node_id`.
+///
+/// # Panics
+///
+/// If a node with `external_node_id` already exists in the network.
+///
+    pub fn add_node(&mut self, node_type: N, external_node_id: EXTID) -> NodeIndex {
         let node_idx = NodeIndex(self.nodes.len());
         let old = self.external_node_id_map.insert(external_node_id, node_idx);
         assert!(old.is_none());
@@ -292,14 +295,14 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         return node_idx;
     }
 
-    pub fn delete_node(&mut self, _external_node_id: ExternalNodeId) {
+    pub fn delete_node(&mut self, _external_node_id: EXTID) {
         self.node_count -= 1;
         unimplemented!();
-        // XXX
+// XXX
     }
 
-    /// Returns a random link between two unconnected nodes, which would not introduce
-    /// a cycle. Return None is no such exists.
+/// Returns a random link between two unconnected nodes, which would not introduce
+/// a cycle. Return None is no such exists.
     pub fn find_random_unconnected_link_no_cycle<R: Rng>(&self,
                                                          rng: &mut R)
                                                          -> Option<(NodeIndex, NodeIndex)> {
@@ -310,26 +313,26 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
 
         let mut adj_matrix = FixedBitSet::with_capacity(n * n);
 
-        // Build up a binary, undirected adjacency matrix of the graph.
-        // Every unset bit in the adj_matrix will be a potential link.
+// Build up a binary, undirected adjacency matrix of the graph.
+// Every unset bit in the adj_matrix will be a potential link.
         for (i, node) in self.nodes.iter().enumerate() {
             let mut link_iter = LinkIter::from(node.first_link);
             while let Some(link_idx) = link_iter.next(&self.links) {
                 let link = self.link(link_idx);
                 let j = link.node_idx.index();
                 adj_matrix.insert(idx(i, j));
-                // include the link of reverse direction, because this would
-                // create a cycle anyway.
+// include the link of reverse direction, because this would
+// create a cycle anyway.
                 adj_matrix.insert(idx(j, i));
             }
         }
 
         let adj_matrix = adj_matrix; // make immutable
 
-        // We now test all potential links of every node in the graph, if it would
-        // introduce a cycle. For that, we shuffle the node indices (`node_order`).
-        // in random order.
-        // XXX: Remove deleted nodes
+// We now test all potential links of every node in the graph, if it would
+// introduce a cycle. For that, we shuffle the node indices (`node_order`).
+// in random order.
+// XXX: Remove deleted nodes
         let mut node_order: Vec<_> = (0..n).into_iter().collect();
         let mut edge_order: Vec<_> = (0..n).into_iter().collect();
         rng.shuffle(&mut node_order);
@@ -341,11 +344,11 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
             rng.shuffle(&mut edge_order);
             for &j in &edge_order {
                 if i != j && !adj_matrix.contains(idx(i, j)) {
-                    // The link (i, j) neither is reflexive, nor exists.
+// The link (i, j) neither is reflexive, nor exists.
                     let ni = NodeIndex(i);
                     let nj = NodeIndex(j);
                     if self.valid_link(ni, nj).is_ok() && !cycler.link_would_cycle(ni, nj) {
-                        // If the link is valid and does not create a cycle, we are done!
+// If the link is valid and does not create a cycle, we are done!
                         return Some((ni, nj));
                     }
                 }
@@ -355,7 +358,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         return None;
     }
 
-    /// Returns true if the introduction of this directed link would lead towards a cycle.
+/// Returns true if the introduction of this directed link would lead towards a cycle.
     pub fn link_would_cycle(&self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
         if source_node_idx == target_node_idx {
             return true;
@@ -364,7 +367,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         CycleDetector::new(self).link_would_cycle(source_node_idx, target_node_idx)
     }
 
-    // Check if the link is valid. Doesn't check for cycles.
+// Check if the link is valid. Doesn't check for cycles.
     pub fn valid_link(&self,
                       source_node_idx: NodeIndex,
                       target_node_idx: NodeIndex)
@@ -384,13 +387,14 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         Ok(())
     }
 
-    pub fn lookup_node_index(&self, external_node_id: ExternalNodeId) -> Option<NodeIndex> {
+    pub fn lookup_node_index(&self, external_node_id: EXTID) -> Option<NodeIndex> {
         self.external_node_id_map.get(&external_node_id).map(|&i| i)
     }
 
     // Note: Doesn't check for cycles (except in the simple reflexive case).
-    // Note that we use NodeType#in_order() to keep the list of links in order.
-    // XXX: Need test cases.
+// Note that we keep the list of links sorted according the the target node's
+// external node id.
+// XXX: Need test cases.
     pub fn add_link(&mut self,
                     source_node_idx: NodeIndex,
                     target_node_idx: NodeIndex,
@@ -415,14 +419,14 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
                 panic!("duplicate link");
             }
             (None, Some(prev_link_idx)) => {
-                // we should insert the node after prev_link_idx.
+// we should insert the node after prev_link_idx.
                 let next_link = self.link_item(prev_link_idx).next_used();
                 let new_link_idx = self.allocate_link(link, next_link);
                 self.links[prev_link_idx.index()].set_next_used(Some(new_link_idx));
                 return new_link_idx;
             }
             (None, None) => {
-                // prepend.
+// prepend.
                 let next_link = self.node(source_node_idx).first_link;
                 let new_link_idx = self.allocate_link(link, next_link);
                 self.node_mut(source_node_idx).first_link = Some(new_link_idx);
@@ -478,15 +482,15 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         self.set_link_status(source_node_idx, target_node_idx, false)
     }
 
-    // Returns (Some(index), _) if the given link was found.
-    // Returns (None, _) if the link was not found.
-    // (_, Some(prev_index)) is the index of the previous link in the list.
-    // (_, None) when no previous element exists (list is empty or contains one element).
+// Returns (Some(index), _) if the given link was found.
+// Returns (None, _) if the link was not found.
+// (_, Some(prev_index)) is the index of the previous link in the list.
+// (_, None) when no previous element exists (list is empty or contains one element).
     fn find_link_index(&self,
                        source_node_idx: NodeIndex,
                        target_node_idx: NodeIndex)
                        -> (Option<LinkIndex>, Option<LinkIndex>) {
-        // we use the target_node's external node id as sort order.
+// we use the target_node's external node id as sort order.
         let target_node_ext_id = self.node(target_node_idx).external_node_id();
 
         let mut link_iter = self.link_iter_for_node(source_node_idx);
@@ -495,16 +499,16 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
 
             let link_ext_id = self.node(link.node_idx).external_node_id();
 
-            // We found the node we are looking for.
+// We found the node we are looking for.
             if link.node_idx == target_node_idx {
                 debug_assert!(link_ext_id == target_node_ext_id);
                 return (Some(link_idx), link_iter.get_prev());
             }
             debug_assert!(link_ext_id != target_node_ext_id);
 
-            // We keep the links sorted according to the target node's `external_node_id`.
-            // If we are out of order, the link does not exist and a new link should be
-            // inserted after the prev_link.
+// We keep the links sorted according to the target node's `external_node_id`.
+// If we are out of order, the link does not exist and a new link should be
+// inserted after the prev_link.
             if link_ext_id > target_node_ext_id {
                 break;
             }
@@ -512,7 +516,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
         return (None, link_iter.get_prev());
     }
 
-    /// Remove the first link that matches `source_node_idx` and `target_node_idx`.
+/// Remove the first link that matches `source_node_idx` and `target_node_idx`.
     pub fn remove_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
         let found_idx = match self.find_link_index(source_node_idx, target_node_idx) {
             (Some(found_idx), Some(prev_idx)) => {
@@ -521,19 +525,19 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
                 found_idx
             }
             (Some(found_idx), None) => {
-                // `found_idx` is the first item in the list.
+// `found_idx` is the first item in the list.
                 assert!(self.node(source_node_idx).first_link == Some(found_idx));
                 assert!(self.link_item(found_idx).next_used().is_none());
                 self.node_mut(source_node_idx).first_link = None;
                 found_idx
             }
             (None, _) => {
-                // link was not found
+// link was not found
                 return false;
             }
         };
 
-        // push found_idx on free list
+// push found_idx on free list
         assert!(self.links[found_idx.index()].is_used());
         self.links[found_idx.index()] = LinkItem::Free { next: self.free_links };
         self.free_links = Some(found_idx);
@@ -547,16 +551,20 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized> Network<N, L> {
     }
 }
 
-struct CycleDetector<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a> {
-    nodes: &'a [Node<N>],
+struct CycleDetector<'a,
+                     N: NodeType + 'a,
+                     L: Copy + Debug + Send + Sized + 'a,
+                     EXTID: Copy + Debug + Send + Sized + Ord + 'a>
+{
+    nodes: &'a [Node<N, EXTID>],
     links: &'a [LinkItem<L>],
     nodes_to_visit: Vec<usize>,
     seen_nodes: FixedBitSet,
     dirty: bool,
 }
 
-impl<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a> CycleDetector<'a, N, L> {
-    fn new(network: &'a Network<N, L>) -> CycleDetector<'a, N, L> {
+impl<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a, EXTID: Copy + Debug + Send + Sized + Ord + 'a> CycleDetector<'a, N, L, EXTID> {
+    fn new(network: &'a Network<N, L, EXTID>) -> CycleDetector<'a, N, L, EXTID> {
         CycleDetector {
             nodes: &network.nodes,
             links: &network.links,
