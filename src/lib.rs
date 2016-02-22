@@ -136,6 +136,15 @@ struct List {
     head: Option<LinkIndex>,
 }
 
+impl List {
+    fn iter<'a, L, EXTID>(&self, link_array: &'a [LinkItem<L, EXTID>]) -> LinkIter<'a, L, EXTID>
+        where L: Copy + Debug + Send + Sized + 'a,
+              EXTID: Copy + Debug + Send + Sized + Ord + 'a
+    {
+        LinkIter::new(self.head, link_array)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Node<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = ExternalId> {
     node_type: N,
@@ -241,7 +250,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
 
     #[inline]
     pub fn link_iter_for_node<'a>(&'a self, node_idx: NodeIndex) -> LinkIter<'a, L, EXTID> {
-        LinkIter::new(self.node(node_idx).links.head, &self.links)
+        self.node(node_idx).links.iter(&self.links)
     }
 
     #[inline]
@@ -293,7 +302,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
 // Build up a binary, undirected adjacency matrix of the graph.
 // Every unset bit in the adj_matrix will be a potential link.
         for (i, node) in self.nodes.iter().enumerate() {
-            for (_, link) in LinkIter::new(node.links.head, &self.links) {
+            for (_, link) in node.links.iter(&self.links) {
                 let j = link.target_node_idx.index();
                 adj_matrix.insert(idx(i, j));
 // include the link of reverse direction, because this would
