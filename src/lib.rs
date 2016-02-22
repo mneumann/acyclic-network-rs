@@ -726,12 +726,25 @@ mod tests {
         assert_eq!(2, g.node(i1).out_degree());
         assert_eq!(1, g.node(h1).in_degree());
         assert_eq!(1, g.node(h2).in_degree());
+        assert_eq!(2, g.link_count());
 
         assert_eq!(true, g.remove_link(i1, h1));
         assert_eq!(1, g.node(i1).out_degree());
         assert_eq!(0, g.node(h1).in_degree());
         assert_eq!(1, g.node(h2).in_degree());
+        assert_eq!(1, g.link_count());
 
+        assert_eq!(false, g.remove_link(i1, h1));
+        assert_eq!(1, g.node(i1).out_degree());
+        assert_eq!(0, g.node(h1).in_degree());
+        assert_eq!(1, g.node(h2).in_degree());
+        assert_eq!(1, g.link_count());
+
+        assert_eq!(true, g.remove_link(i1, h2));
+        assert_eq!(0, g.node(i1).out_degree());
+        assert_eq!(0, g.node(h1).in_degree());
+        assert_eq!(0, g.node(h2).in_degree());
+        assert_eq!(0, g.link_count());
 
         // XXX: test for sort order
     }
