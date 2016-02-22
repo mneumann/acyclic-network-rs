@@ -448,10 +448,8 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                        -> Option<LinkIndex> {
         let mut link_iter = self.link_iter_for_node(source_node_idx);
         while let Some(link_idx) = link_iter.next(&self.links) {
-            let link = self.link(link_idx);
-
 // We found the node we are looking for.
-            if link.target_node_idx == target_node_idx {
+            if self.link(link_idx).target_node_idx == target_node_idx {
                 return Some(link_idx);
             }
         }
@@ -478,38 +476,60 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                     }
                 }
 
-// swap the item with the last one.
-                let replaced_element_idx = LinkIndex(self.links.len() - 1);
-                let old = self.links.swap_remove(found_idx.index());
-                debug_assert!(old.link.source_node_idx == source_node_idx);
-                debug_assert!(old.link.target_node_idx == target_node_idx);
-
-// We have to change the linking of the newly at position `found_idx` placed
-// element.
-                let new_found_idx = found_idx;
-// change the next pointer of the previous element
-                match self.link_item(new_found_idx).prev {
-                    Some(idx) => {
-                        assert!(self.link_item(idx).next == Some(replaced_element_idx));
-                        self.links[idx.index()].next = Some(new_found_idx);
-                    }
+                match self.link_item(found_idx).next {
                     None => {
-// it was the first in the chain
-// we have to update the associated nodes first_link field.
-                        assert!(self.node(self.link(new_found_idx).source_node_idx).first_link == Some(replaced_element_idx));
-                        let src = self.link(new_found_idx).source_node_idx;
-                        self.node_mut(src).first_link = Some(new_found_idx);
+// nothing to do
+                    }
+                    Some(next_idx) => {
+                        assert!(self.link_item(next_idx).prev == Some(found_idx));
+                        let prev = self.link_item(found_idx).prev;
+                        self.links[next_idx.index()].prev = prev;
                     }
                 }
 
-// change the prev pointer of the next element
-                match self.link_item(new_found_idx).next {
-                    Some(idx) => {
-                        assert!(self.link_item(idx).prev == Some(replaced_element_idx));
-                        self.links[idx.index()].prev = Some(new_found_idx);
+                self.links[found_idx.index()].next = None;
+                self.links[found_idx.index()].prev = None;
+
+// swap the item with the last one.
+                let replaced_element_idx = LinkIndex(self.links.len() - 1);
+
+                if found_idx == replaced_element_idx {
+// if we are the last element, we can just pop it
+                    let old = self.links.pop().unwrap();
+                    debug_assert!(old.link.source_node_idx == source_node_idx);
+                    debug_assert!(old.link.target_node_idx == target_node_idx);
+                } else {
+                    let old = self.links.swap_remove(found_idx.index());
+                    debug_assert!(old.link.source_node_idx == source_node_idx);
+                    debug_assert!(old.link.target_node_idx == target_node_idx);
+
+// We have to change the linking of the newly at position `found_idx` placed
+// element.
+                    let new_idx = found_idx;
+// change the next pointer of the previous element
+                    match self.link_item(new_idx).prev {
+                        Some(idx) => {
+                            assert!(self.link_item(idx).next == Some(replaced_element_idx));
+                            self.links[idx.index()].next = Some(new_idx);
+                        }
+                        None => {
+// it was the first in the chain
+// we have to update the associated nodes first_link field.
+                            assert!(self.node(self.link(new_idx).source_node_idx).first_link == Some(replaced_element_idx));
+                            let src = self.link(new_idx).source_node_idx;
+                            self.node_mut(src).first_link = Some(new_idx);
+                        }
                     }
-                    None => {
+
+// change the prev pointer of the next element
+                    match self.link_item(new_idx).next {
+                        Some(idx) => {
+                            assert!(self.link_item(idx).prev == Some(replaced_element_idx));
+                            self.links[idx.index()].prev = Some(new_idx);
+                        }
+                        None => {
 // last in the chain. nothing to do.
+                        }
                     }
                 }
 
@@ -692,4 +712,29 @@ mod tests {
         let link = g.find_random_unconnected_link_no_cycle(&mut rng);
         assert_eq!(false, link.is_some());
     }
+
+    #[test]
+    fn test_remove_link() {
+        let mut g = Network::new();
+        let i1 = g.add_node(NodeT::Input, ExternalId(1));
+        let h1 = g.add_node(NodeT::Hidden, ExternalId(2));
+        let h2 = g.add_node(NodeT::Hidden, ExternalId(3));
+
+        g.add_link(i1, h1, 0.0, ExternalId(2));
+        g.add_link(i1, h2, 0.0, ExternalId(1));
+
+        assert_eq!(2, g.node(i1).out_degree());
+        assert_eq!(1, g.node(h1).in_degree());
+        assert_eq!(1, g.node(h2).in_degree());
+
+        assert_eq!(true, g.remove_link(i1, h1));
+        assert_eq!(1, g.node(i1).out_degree());
+        assert_eq!(0, g.node(h1).in_degree());
+        assert_eq!(1, g.node(h2).in_degree());
+
+
+        // XXX: test for sort order
+    }
+
+
 }
