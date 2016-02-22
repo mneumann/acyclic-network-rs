@@ -3,9 +3,9 @@ use std::fmt::Debug;
 use super::{NodeType, Node, LinkItem, Network, NodeIndex, LinkIter};
 
 pub struct CycleDetector<'a,
-                     N: NodeType + 'a,
-                     L: Copy + Debug + Send + Sized + 'a,
-                     EXTID: Copy + Debug + Send + Sized + Ord + 'a>
+                         N: NodeType + 'a,
+                         L: Copy + Debug + Send + Sized + 'a,
+                         EXTID: Copy + Debug + Send + Sized + Ord + 'a>
 {
     nodes: &'a [Node<N, EXTID>],
     links: &'a [LinkItem<L, EXTID>],
@@ -50,7 +50,7 @@ impl<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a, EXTID: Copy + De
         seen_nodes.insert(path_from);
 
         while let Some(visit_node) = nodes_to_visit.pop() {
-            for (_, out_link) in LinkIter::new(nodes[visit_node].first_link, self.links) {
+            for (_, out_link) in LinkIter::new(nodes[visit_node].links.head, self.links) {
                 let next_node = out_link.target_node_idx.index();
                 if !seen_nodes.contains(next_node) {
                     if next_node == path_to {

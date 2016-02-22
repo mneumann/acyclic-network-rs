@@ -132,10 +132,15 @@ impl<L, EXTID> Link<L, EXTID>
 }
 
 #[derive(Clone, Debug)]
+struct List {
+    head: Option<LinkIndex>,
+}
+
+#[derive(Clone, Debug)]
 pub struct Node<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = ExternalId> {
     node_type: N,
     external_node_id: EXTID,
-    first_link: Option<LinkIndex>,
+    links: List,
     // in and out degree counts disabled links!
     in_degree: u32,
     out_degree: u32,
@@ -236,7 +241,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
 
     #[inline]
     pub fn link_iter_for_node<'a>(&'a self, node_idx: NodeIndex) -> LinkIter<'a, L, EXTID> {
-        LinkIter::new(self.node(node_idx).first_link, &self.links)
+        LinkIter::new(self.node(node_idx).links.head, &self.links)
     }
 
     #[inline]
@@ -259,7 +264,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         self.nodes.push(Node {
             node_type: node_type,
             external_node_id: external_node_id,
-            first_link: None,
+            links: List {head: None},
             in_degree: 0,
             out_degree: 0,
         });
@@ -288,7 +293,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
 // Build up a binary, undirected adjacency matrix of the graph.
 // Every unset bit in the adj_matrix will be a potential link.
         for (i, node) in self.nodes.iter().enumerate() {
-            for (_, link) in LinkIter::new(node.first_link, &self.links) {
+            for (_, link) in LinkIter::new(node.links.head, &self.links) {
                 let j = link.target_node_idx.index();
                 adj_matrix.insert(idx(i, j));
 // include the link of reverse direction, because this would
@@ -385,13 +390,13 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         match self.find_link_index_insert(source_node_idx, target_node_idx, external_link_id) {
             None => {
 // prepend
-                let next_link = self.node(source_node_idx).first_link;
+                let next_link = self.node(source_node_idx).links.head;
                 let new_link_idx = self.allocate_link_item(LinkItem{
                     link: link,
                     prev: None,
                     next: next_link,
                 });
-                self.node_mut(source_node_idx).first_link = Some(new_link_idx);
+                self.node_mut(source_node_idx).links.head = Some(new_link_idx);
                 return new_link_idx;
             }
             Some(idx) => {
@@ -480,8 +485,8 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                 match self.link_item(found_idx).prev {
                     None => {
 // `found_idx` is the first element in the list
-                        assert!(self.node(source_node_idx).first_link == Some(found_idx));
-                        self.node_mut(source_node_idx).first_link = self.link_item(found_idx).next;
+                        assert!(self.node(source_node_idx).links.head == Some(found_idx));
+                        self.node_mut(source_node_idx).links.head = self.link_item(found_idx).next;
                     }
                     Some(prev_idx) => {
                         assert!(self.link_item(prev_idx).next == Some(found_idx));
@@ -528,10 +533,10 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                         }
                         None => {
 // it was the first in the chain
-// we have to update the associated nodes first_link field.
-                            assert!(self.node(self.link(new_idx).source_node_idx).first_link == Some(replaced_element_idx));
+// we have to update the associated nodes `links.head` field.
+                            assert!(self.node(self.link(new_idx).source_node_idx).links.head == Some(replaced_element_idx));
                             let src = self.link(new_idx).source_node_idx;
-                            self.node_mut(src).first_link = Some(new_idx);
+                            self.node_mut(src).links.head = Some(new_idx);
                         }
                     }
 
