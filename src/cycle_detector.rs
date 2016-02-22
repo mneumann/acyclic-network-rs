@@ -1,6 +1,6 @@
 use fixedbitset::FixedBitSet;
 use std::fmt::Debug;
-use super::{NodeType, Node, LinkItem, Network, NodeIndex, LinkIter};
+use super::{LinkItem, LinkIter, Network, Node, NodeIndex, NodeType};
 
 pub struct CycleDetector<'a,
                          N: NodeType + 'a,
