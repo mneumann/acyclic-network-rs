@@ -52,7 +52,7 @@ struct LinkItem<L, EXTID>
     link: Link<L, EXTID>,
 }
 
-struct LinkIter<'a, L, EXTID>
+pub struct LinkIter<'a, L, EXTID>
     where L: Copy + Debug + Send + Sized + 'a,
           EXTID: Copy + Debug + Send + Sized + Ord + 'a
 {
@@ -101,7 +101,7 @@ impl<'a, L, EXTID> Iterator for LinkIter<'a, L, EXTID>
 }
 
 #[derive(Clone, Debug)]
-struct Link<L, EXTID>
+pub struct Link<L, EXTID>
     where L: Copy + Debug + Send + Sized,
           EXTID: Copy + Debug + Send + Sized + Ord
 {
@@ -121,6 +121,10 @@ impl<L, EXTID> Link<L, EXTID>
 {
     pub fn external_link_id(&self) -> EXTID {
         self.external_link_id
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.active
     }
 }
 
@@ -227,7 +231,8 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         }
     }
 
-    fn link_iter_for_node<'a>(&'a self, node_idx: NodeIndex) -> LinkIter<'a, L, EXTID> {
+    #[inline]
+    pub fn link_iter_for_node<'a>(&'a self, node_idx: NodeIndex) -> LinkIter<'a, L, EXTID> {
         LinkIter::new(self.node(node_idx).first_link, &self.links)
     }
 
