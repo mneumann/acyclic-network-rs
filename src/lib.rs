@@ -121,6 +121,10 @@ where L: Copy + Debug + Send + Sized,
     pub fn is_active(&self) -> bool {
         self.active
     }
+
+    pub fn weight(&self) -> L {
+        self.weight
+    }
 }
 
 #[derive(Clone, Debug)]
