@@ -47,8 +47,8 @@ impl LinkIndex {
 // Wraps a Link for use in a double linked list
 #[derive(Clone, Debug)]
 struct LinkItem<L, EXTID>
-where L: Copy + Debug + Send + Sized,
-      EXTID: Copy + Debug + Send + Sized + Ord
+    where L: Copy + Debug + Send + Sized,
+          EXTID: Copy + Debug + Send + Sized + Ord
 {
     prev: Option<LinkIndex>,
     next: Option<LinkIndex>,
@@ -56,16 +56,16 @@ where L: Copy + Debug + Send + Sized,
 }
 
 pub struct LinkIter<'a, L, EXTID>
-where L: Copy + Debug + Send + Sized + 'a,
-      EXTID: Copy + Debug + Send + Sized + Ord + 'a
+    where L: Copy + Debug + Send + Sized + 'a,
+          EXTID: Copy + Debug + Send + Sized + Ord + 'a
 {
     next_link_idx: Option<LinkIndex>,
     link_array: &'a [LinkItem<L, EXTID>],
 }
 
 impl<'a, L, EXTID> LinkIter<'a, L, EXTID>
-where L: Copy + Debug + Send + Sized + 'a,
-      EXTID: Copy + Debug + Send + Sized + Ord + 'a
+    where L: Copy + Debug + Send + Sized + 'a,
+          EXTID: Copy + Debug + Send + Sized + Ord + 'a
 {
     fn new(link_idx_opt: Option<LinkIndex>, link_array: &'a [LinkItem<L, EXTID>]) -> Self {
         LinkIter {
@@ -76,8 +76,8 @@ where L: Copy + Debug + Send + Sized + 'a,
 }
 
 impl<'a, L, EXTID> Iterator for LinkIter<'a, L, EXTID>
-where L: Copy + Debug + Send + Sized + 'a,
-      EXTID: Copy + Debug + Send + Sized + Ord + 'a
+    where L: Copy + Debug + Send + Sized + 'a,
+          EXTID: Copy + Debug + Send + Sized + Ord + 'a
 {
     type Item = (LinkIndex, &'a Link<L, EXTID>);
 
@@ -95,10 +95,86 @@ where L: Copy + Debug + Send + Sized + 'a,
     }
 }
 
+
+pub struct LinkRefIter<'a, N, L, EXTID>
+    where N: NodeType + 'a,
+          L: Copy + Debug + Send + Sized + 'a,
+          EXTID: Copy + Debug + Send + Sized + Ord + 'a
+{
+    next_link_idx: Option<LinkIndex>,
+    network: &'a Network<N, L, EXTID>,
+}
+
+/// A LinkRefItem includes a pointer to the network, 
+/// as such, it is read only.
+pub struct LinkRefItem<'a, N, L, EXTID>
+    where N: NodeType + 'a,
+          L: Copy + Debug + Send + Sized + 'a,
+          EXTID: Copy + Debug + Send + Sized + Ord + 'a
+{
+    link: &'a Link<L, EXTID>,
+    network: &'a Network<N, L, EXTID>,
+}
+
+impl<'a, N, L, EXTID> LinkRefItem<'a, N, L, EXTID>
+    where N: NodeType + 'a,
+          L: Copy + Debug + Send + Sized + 'a,
+          EXTID: Copy + Debug + Send + Sized + Ord + 'a
+{
+    pub fn link(&self) -> &Link<L, EXTID> {
+        self.link
+    }
+
+    pub fn external_source_node_id(&self) -> EXTID {
+        self.network.node(self.link.source_node_idx).external_node_id()
+    }
+
+    pub fn external_target_node_id(&self) -> EXTID {
+        self.network.node(self.link.target_node_idx).external_node_id()
+    }
+}
+
+impl<'a, N, L, EXTID> LinkRefIter<'a, N, L, EXTID>
+    where N: NodeType + 'a,
+          L: Copy + Debug + Send + Sized + 'a,
+          EXTID: Copy + Debug + Send + Sized + Ord + 'a
+{
+    fn new(link_idx_opt: Option<LinkIndex>, network: &'a Network<N, L, EXTID>) -> Self {
+        LinkRefIter {
+            next_link_idx: link_idx_opt,
+            network: network,
+        }
+    }
+}
+
+impl<'a, N, L, EXTID> Iterator for LinkRefIter<'a, N, L, EXTID>
+    where N: NodeType + 'a,
+          L: Copy + Debug + Send + Sized + 'a,
+          EXTID: Copy + Debug + Send + Sized + Ord + 'a
+{
+    type Item = (LinkRefItem<'a, N, L, EXTID>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.next_link_idx {
+            Some(idx) => {
+                let item = &self.network.links[idx.index()];
+                self.next_link_idx = item.next;
+                return Some(LinkRefItem {
+                    link: &item.link,
+                    network: &self.network,
+                });
+            }
+            None => {
+                return None;
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Link<L, EXTID>
-where L: Copy + Debug + Send + Sized,
-      EXTID: Copy + Debug + Send + Sized + Ord
+    where L: Copy + Debug + Send + Sized,
+          EXTID: Copy + Debug + Send + Sized + Ord
 {
     source_node_idx: NodeIndex,
     target_node_idx: NodeIndex,
@@ -111,8 +187,8 @@ where L: Copy + Debug + Send + Sized,
 }
 
 impl<L, EXTID> Link<L, EXTID>
-where L: Copy + Debug + Send + Sized,
-      EXTID: Copy + Debug + Send + Sized + Ord
+    where L: Copy + Debug + Send + Sized,
+          EXTID: Copy + Debug + Send + Sized + Ord
 {
     pub fn external_link_id(&self) -> EXTID {
         self.external_link_id
@@ -152,9 +228,9 @@ impl List {
     fn iter<'a, L, EXTID>(&self, link_array: &'a [LinkItem<L, EXTID>]) -> LinkIter<'a, L, EXTID>
         where L: Copy + Debug + Send + Sized + 'a,
               EXTID: Copy + Debug + Send + Sized + Ord + 'a
-              {
-                  LinkIter::new(self.head, link_array)
-              }
+    {
+        LinkIter::new(self.head, link_array)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -192,8 +268,8 @@ impl<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = ExternalId> Node<N,
 /// A directed, acylic network.
 #[derive(Clone, Debug)]
 pub struct Network<N: NodeType,
-L: Copy + Debug + Send + Sized,
-EXTID: Copy + Debug + Send + Sized + Ord = ExternalId>
+                   L: Copy + Debug + Send + Sized,
+                   EXTID: Copy + Debug + Send + Sized + Ord = ExternalId>
 {
     nodes: Vec<Node<N, EXTID>>,
     links: Vec<LinkItem<L, EXTID>>, // XXX: Rename to link_items
@@ -266,6 +342,11 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
     }
 
     #[inline]
+    pub fn link_ref_iter_for_node<'a>(&'a self, node_idx: NodeIndex) -> LinkRefIter<'a, N, L, EXTID> {
+        LinkRefIter::new(self.node(node_idx).links.head, self)
+    }
+
+    #[inline]
     pub fn each_active_forward_link_of_node<F>(&self, node_idx: NodeIndex, mut f: F)
         where F: FnMut(NodeIndex, L)
         {
@@ -276,10 +357,10 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             }
         }
 
-    /// Adds a new node to the network with type `node_type` and the associated
-    /// id `external_node_id`. The `external_node_id` is stored in the node and
-    /// can be retrieved later on.
-    ///
+/// Adds a new node to the network with type `node_type` and the associated
+/// id `external_node_id`. The `external_node_id` is stored in the node and
+/// can be retrieved later on.
+///
     pub fn add_node(&mut self, node_type: N, external_node_id: EXTID) -> NodeIndex {
         let node_idx = NodeIndex(self.nodes.len());
         self.nodes.push(Node {
@@ -296,11 +377,12 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
     pub fn delete_node(&mut self, _node_idx: NodeIndex) {
         self.node_count -= 1;
         unimplemented!();
-        // XXX
+// XXX
     }
 
-    /// Returns a random link between two unconnected nodes, which would not introduce
-    /// a cycle. Return None is no such exists.
+/// Returns a random link between two unconnected nodes, which would not
+/// introduce
+/// a cycle. Return None is no such exists.
     pub fn find_random_unconnected_link_no_cycle<R: Rng>(&self,
                                                          rng: &mut R)
         -> Option<(NodeIndex, NodeIndex)> {
@@ -311,24 +393,24 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
 
             let mut adj_matrix = FixedBitSet::with_capacity(n * n);
 
-            // Build up a binary, undirected adjacency matrix of the graph.
-            // Every unset bit in the adj_matrix will be a potential link.
+// Build up a binary, undirected adjacency matrix of the graph.
+// Every unset bit in the adj_matrix will be a potential link.
             for (i, node) in self.nodes.iter().enumerate() {
                 for (_, link) in node.links.iter(&self.links) {
                     let j = link.target_node_idx.index();
                     adj_matrix.insert(idx(i, j));
-                    // include the link of reverse direction, because this would
-                    // create a cycle anyway.
+// include the link of reverse direction, because this would
+// create a cycle anyway.
                     adj_matrix.insert(idx(j, i));
                 }
             }
 
             let adj_matrix = adj_matrix; // make immutable
 
-            // We now test all potential links of every node in the graph, if it would
-            // introduce a cycle. For that, we shuffle the node indices (`node_order`).
-            // in random order.
-            // XXX: Remove deleted nodes
+// We now test all potential links of every node in the graph, if it would
+// introduce a cycle. For that, we shuffle the node indices (`node_order`).
+// in random order.
+// XXX: Remove deleted nodes
             let mut node_order: Vec<_> = (0..n).into_iter().collect();
             let mut edge_order: Vec<_> = (0..n).into_iter().collect();
             rng.shuffle(&mut node_order);
@@ -340,11 +422,11 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                 rng.shuffle(&mut edge_order);
                 for &j in &edge_order {
                     if i != j && !adj_matrix.contains(idx(i, j)) {
-                        // The link (i, j) neither is reflexive, nor exists.
+// The link (i, j) neither is reflexive, nor exists.
                         let ni = NodeIndex(i);
                         let nj = NodeIndex(j);
                         if self.valid_link(ni, nj).is_ok() && !cycler.link_would_cycle(ni, nj) {
-                            // If the link is valid and does not create a cycle, we are done!
+// If the link is valid and does not create a cycle, we are done!
                             return Some((ni, nj));
                         }
                     }
@@ -354,7 +436,8 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             return None;
         }
 
-    /// Returns true if the introduction of this directed link would lead towards a cycle.
+/// Returns true if the introduction of this directed link would lead towards a
+/// cycle.
     pub fn link_would_cycle(&self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
         if source_node_idx == target_node_idx {
             return true;
@@ -363,7 +446,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         CycleDetector::new(self).link_would_cycle(source_node_idx, target_node_idx)
     }
 
-    // Check if the link is valid. Doesn't check for cycles.
+// Check if the link is valid. Doesn't check for cycles.
     pub fn valid_link(&self,
                       source_node_idx: NodeIndex,
                       target_node_idx: NodeIndex)
@@ -493,9 +576,9 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         }
 
     // Note: Doesn't check for cycles (except in the simple reflexive case).
-    // Note that we keep the list of links sorted according to it's
-    // external_link_id.
-    // XXX: Need test cases.
+// Note that we keep the list of links sorted according to it's
+// external_link_id.
+// XXX: Need test cases.
     pub fn add_link_with_active(&mut self,
                     source_node_idx: NodeIndex,
                     target_node_idx: NodeIndex,
@@ -522,13 +605,13 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             match self.find_link_index_insert_before(source_node_idx, target_node_idx, external_link_id) {
                 None => {
                     if let Some(tail) = self.node(source_node_idx).links.tail {
-                        // check if last element is equal
+// check if last element is equal
                         if self.link(tail).target_node_idx == target_node_idx {
                             assert!(self.link(tail).external_link_id == external_link_id);
                             panic!("Duplicate link");
                         }
                     }
-                    // append at end.
+// append at end.
                     return self.append(source_node_idx, link);
                 }
                 Some(idx) => {
@@ -537,7 +620,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                             return self.prepend(source_node_idx, link);
                         }
                         Some(insert_after) => {
-                            // check if previous element is not equal
+// check if previous element is not equal
                             if self.link(insert_after).target_node_idx == target_node_idx {
                                 assert!(self.link(insert_after).external_link_id == external_link_id);
                                 panic!("Duplicate link");
@@ -562,14 +645,14 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             }
         }
 
-    // Returns the index of the first element whoose external link id >
-    // `external_link_id`.
+// Returns the index of the first element whoose external link id >
+// `external_link_id`.
     fn find_link_index_insert_before(&self,
                                      source_node_idx: NodeIndex,
                                      _target_node_idx: NodeIndex,
                                      external_link_id: EXTID)
         -> Option<LinkIndex> {
-            // the links are sorted according to their external link id.
+// the links are sorted according to their external link id.
             let mut link_iter = self.link_iter_for_node(source_node_idx);
             for (idx, link) in &mut link_iter {
                 if link.external_link_id() > external_link_id {
@@ -584,7 +667,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                              target_node_idx: NodeIndex)
         -> Option<LinkIndex> {
             for (link_idx, link) in self.link_iter_for_node(source_node_idx) {
-                // We found the node we are looking for.
+// We found the node we are looking for.
                 if link.target_node_idx == target_node_idx {
                     return Some(link_idx);
                 }
@@ -592,24 +675,24 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             return None;
         }
 
-    /// Remove the first link that matches `source_node_idx` and `target_node_idx`.
-    /// XXX
+/// Remove the first link that matches `source_node_idx` and `target_node_idx`.
+/// XXX
     pub fn remove_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
         if let Some(found_idx) = self.find_link_index_exact(source_node_idx, target_node_idx) {
             debug_assert!(self.link(found_idx).source_node_idx == source_node_idx);
             debug_assert!(self.link(found_idx).target_node_idx == target_node_idx);
-            // remove item from chain
+// remove item from chain
 
             match (self.link_item(found_idx).prev, self.link_item(found_idx).next) {
                 (None, None) => {
-                    // Item is the only element of the list.
+// Item is the only element of the list.
                     assert!(self.node(source_node_idx).links.head == Some(found_idx));
                     assert!(self.node(source_node_idx).links.tail == Some(found_idx));
                     self.node_mut(source_node_idx).links = List::empty();
                 }
 
                 (None, Some(next)) => {
-                    // Item is the first element in the list, followed by some other element.
+// Item is the first element in the list, followed by some other element.
                     assert!(self.links[next.index()].prev == Some(found_idx));
                     assert!(self.node(source_node_idx).links.head == Some(found_idx));
                     assert!(self.node(source_node_idx).links.tail != Some(found_idx));
@@ -618,19 +701,19 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                 }
 
                 (Some(prev), None) => {
-                    // Item is the last element of the list, preceded by some other element.
+// Item is the last element of the list, preceded by some other element.
                     assert!(self.links[prev.index()].next == Some(found_idx));
                     assert!(self.node(source_node_idx).links.tail == Some(found_idx));
                     assert!(self.node(source_node_idx).links.head != Some(found_idx));
 
-                    // make the previous element the new tail
+// make the previous element the new tail
                     self.node_mut(source_node_idx).links.tail = Some(prev);
                     self.links[prev.index()].next = None;
                 }
 
                 (Some(prev), Some(next)) => {
-                    // Item is somewhere in the middle of the list. We don't have to
-                    // update the head or tail pointers.
+// Item is somewhere in the middle of the list. We don't have to
+// update the head or tail pointers.
                     assert!(self.node(source_node_idx).links.head != Some(found_idx));
                     assert!(self.node(source_node_idx).links.tail != Some(found_idx));
 
@@ -645,11 +728,11 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             self.links[found_idx.index()].next = None;
             self.links[found_idx.index()].prev = None;
 
-            // swap the item with the last one.
+// swap the item with the last one.
             let old_idx = LinkIndex(self.links.len() - 1);
 
             if found_idx == old_idx {
-                // if we are the last element, we can just pop it
+// if we are the last element, we can just pop it
                 let old = self.links.pop().unwrap();
                 debug_assert!(old.link.source_node_idx == source_node_idx);
                 debug_assert!(old.link.target_node_idx == target_node_idx);
@@ -658,19 +741,19 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                 debug_assert!(old.link.source_node_idx == source_node_idx);
                 debug_assert!(old.link.target_node_idx == target_node_idx);
 
-                // We have to change the linking of the newly at position `found_idx` placed
-                // element.
+// We have to change the linking of the newly at position `found_idx` placed
+// element.
                 let new_idx = found_idx;
-                // change the next pointer of the previous element
+// change the next pointer of the previous element
                 let new_source_node_idx = self.link(new_idx).source_node_idx;
 
                 match (self.link_item(new_idx).prev, self.link_item(new_idx).next) {
                     (None, None) => {
-                        // the moved element was the only element in the list.
+// the moved element was the only element in the list.
                         assert!(self.node(new_source_node_idx).links.head == Some(old_idx));
                         assert!(self.node(new_source_node_idx).links.tail == Some(old_idx));
 
-                        // Update both head and tail to the new element index.
+// Update both head and tail to the new element index.
                         self.node_mut(new_source_node_idx).links = List {
                             head: Some(new_idx),
                             tail: Some(new_idx)
@@ -678,7 +761,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                     }
 
                     (None, Some(next)) => {
-                        // Item is the first element in the list, followed by some other element.
+// Item is the first element in the list, followed by some other element.
                         assert!(self.links[next.index()].prev == Some(old_idx));
                         assert!(self.node(new_source_node_idx).links.head == Some(old_idx));
                         assert!(self.node(new_source_node_idx).links.tail != Some(old_idx));
@@ -687,19 +770,19 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                     }
 
                     (Some(prev), None) => {
-                        // Item is the last element of the list, preceded by some other element.
+// Item is the last element of the list, preceded by some other element.
                         assert!(self.links[prev.index()].next == Some(old_idx));
                         assert!(self.node(new_source_node_idx).links.tail == Some(old_idx));
                         assert!(self.node(new_source_node_idx).links.head != Some(old_idx));
 
-                        // make the previous element the new tail
+// make the previous element the new tail
                         self.node_mut(new_source_node_idx).links.tail = Some(new_idx);
                         self.links[prev.index()].next = Some(new_idx);
                     }
 
                     (Some(prev), Some(next)) => {
-                        // Item is somewhere in the middle of the list. We don't have to
-                        // update the head or tail pointers.
+// Item is somewhere in the middle of the list. We don't have to
+// update the head or tail pointers.
                         assert!(self.node(new_source_node_idx).links.head != Some(old_idx));
                         assert!(self.node(new_source_node_idx).links.tail != Some(old_idx));
 
@@ -720,7 +803,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             return true;
         }
         else {
-            // link was not found
+// link was not found
             return false;
         }
     }
@@ -830,9 +913,9 @@ mod tests {
         g.add_link(i1, h2, 0.0, ExternalId(1));
 
         assert_eq!(ExternalId(1),
-        g.first_link_of_node(i1).unwrap().external_link_id());
+                   g.first_link_of_node(i1).unwrap().external_link_id());
         assert_eq!(ExternalId(2),
-        g.last_link_of_node(i1).unwrap().external_link_id());
+                   g.last_link_of_node(i1).unwrap().external_link_id());
 
         assert_eq!(2, g.node(i1).out_degree());
         assert_eq!(1, g.node(h1).in_degree());
@@ -846,9 +929,9 @@ mod tests {
         assert_eq!(1, g.link_count());
 
         assert_eq!(ExternalId(1),
-        g.first_link_of_node(i1).unwrap().external_link_id());
+                   g.first_link_of_node(i1).unwrap().external_link_id());
         assert_eq!(ExternalId(1),
-        g.last_link_of_node(i1).unwrap().external_link_id());
+                   g.last_link_of_node(i1).unwrap().external_link_id());
 
         assert_eq!(false, g.remove_link(i1, h1));
         assert_eq!(1, g.node(i1).out_degree());
@@ -857,9 +940,9 @@ mod tests {
         assert_eq!(1, g.link_count());
 
         assert_eq!(ExternalId(1),
-        g.first_link_of_node(i1).unwrap().external_link_id());
+                   g.first_link_of_node(i1).unwrap().external_link_id());
         assert_eq!(ExternalId(1),
-        g.last_link_of_node(i1).unwrap().external_link_id());
+                   g.last_link_of_node(i1).unwrap().external_link_id());
 
         assert_eq!(true, g.remove_link(i1, h2));
         assert_eq!(0, g.node(i1).out_degree());
