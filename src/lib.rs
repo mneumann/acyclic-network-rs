@@ -291,6 +291,7 @@ pub struct Network<N: NodeType,
     links: Vec<LinkItem<L, EXTID>>, // XXX: Rename to link_items
     node_count: usize,
     link_count: usize,
+    active_link_count: usize,
 }
 
 impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + Sized + Ord = ExternalId> Network<N, L, EXTID> {
@@ -300,6 +301,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             links: Vec::new(),
             node_count: 0,
             link_count: 0,
+            active_link_count: 0,
         }
     }
 
@@ -372,6 +374,32 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                 }
             }
         }
+
+    /// # Complexity
+    ///
+    /// O(number of links)
+
+    pub fn random_active_link<R: Rng>(&self, rng: &mut R) -> Option<&Link<L, EXTID>> {
+        let n = self.active_link_count;
+        assert!(n <= self.link_count);
+        if n > 0 {
+            let mut nth_link: usize = rng.gen_range(0, n);
+
+            for node in self.nodes.iter() {
+                for (_link_idx, link) in node.links.iter(&self.links) {
+                    if link.is_active() {
+                        if nth_link > 0 {
+                            nth_link -= 1;
+                        } else {
+                            return Some(link);
+                        }
+                    }
+                }
+            }
+        }
+
+        return None;
+    }
 
 /// Adds a new node to the network with type `node_type` and the associated
 /// id `external_node_id`. The `external_node_id` is stored in the node and
@@ -488,26 +516,26 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         return new_link_idx;
     }
 
-    fn set_link_status(&mut self,
-                       source_node_idx: NodeIndex,
-                       target_node_idx: NodeIndex,
-                       active: bool)
-        -> bool {
-            match self.find_link_index_exact(source_node_idx, target_node_idx) {
-                Some(link_idx) => {
-                    self.link_mut(link_idx).active = active;
-                    true
-                }
-                None => false,
+    pub fn enable_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
+        if let Some(link_idx) = self.find_link_index_exact(source_node_idx, target_node_idx) {
+            if !self.link(link_idx).is_active() {
+                self.active_link_count += 1;
+                self.link_mut(link_idx).active = true; 
+                return true;
             }
         }
-
-    pub fn enable_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
-        self.set_link_status(source_node_idx, target_node_idx, true)
+        return false;
     }
 
     pub fn disable_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
-        self.set_link_status(source_node_idx, target_node_idx, false)
+        if let Some(link_idx) = self.find_link_index_exact(source_node_idx, target_node_idx) {
+            if self.link(link_idx).is_active() {
+                self.active_link_count -= 1;
+                self.link_mut(link_idx).active = false; 
+                return true;
+            }
+        }
+        return false;
     }
 
     pub fn first_link_of_node(&self, node_idx: NodeIndex) -> Option<&Link<L, EXTID>> {
@@ -607,6 +635,9 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             }
 
             self.link_count += 1;
+            if active {
+                self.active_link_count += 1;
+            }
             self.node_mut(source_node_idx).out_degree += 1;
             self.node_mut(target_node_idx).in_degree += 1;
 
@@ -697,6 +728,11 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         if let Some(found_idx) = self.find_link_index_exact(source_node_idx, target_node_idx) {
             debug_assert!(self.link(found_idx).source_node_idx == source_node_idx);
             debug_assert!(self.link(found_idx).target_node_idx == target_node_idx);
+
+            if self.link(found_idx).is_active() {
+                self.active_link_count -= 1;
+            }
+
 // remove item from chain
 
             match (self.link_item(found_idx).prev, self.link_item(found_idx).next) {
