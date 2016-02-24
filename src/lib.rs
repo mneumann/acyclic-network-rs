@@ -118,6 +118,14 @@ where L: Copy + Debug + Send + Sized,
         self.external_link_id
     }
 
+    pub fn source_node_index(&self) -> NodeIndex {
+        self.source_node_idx
+    }
+
+    pub fn target_node_index(&self) -> NodeIndex {
+        self.target_node_idx
+    }
+
     pub fn is_active(&self) -> bool {
         self.active
     }
