@@ -225,6 +225,10 @@ impl<L, EXTID> Link<L, EXTID>
     pub fn weight(&self) -> L {
         self.weight
     }
+
+    pub fn set_weight(&mut self, new_weight: L) {
+        self.weight = new_weight;
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -374,6 +378,15 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                 }
             }
         }
+
+    #[inline]
+    pub fn each_link_mut<F>(&mut self, mut f: F)
+        where F: FnMut(&mut Link<L, EXTID>)
+    {
+        for link_item in &mut self.links[..] {
+            f(&mut link_item.link);
+        }
+    }
 
     /// # Complexity
     ///
