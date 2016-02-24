@@ -475,15 +475,25 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         }
     }
 
-    // Note: Doesn't check for cycles (except in the simple reflexive case).
-    // Note that we keep the list of links sorted according to it's
-    // external_link_id.
-    // XXX: Need test cases.
     pub fn add_link(&mut self,
                     source_node_idx: NodeIndex,
                     target_node_idx: NodeIndex,
                     weight: L,
                     external_link_id: EXTID)
+        -> LinkIndex {
+            self.add_link_with_active(source_node_idx, target_node_idx, weight, external_link_id, true)
+        }
+
+    // Note: Doesn't check for cycles (except in the simple reflexive case).
+    // Note that we keep the list of links sorted according to it's
+    // external_link_id.
+    // XXX: Need test cases.
+    pub fn add_link_with_active(&mut self,
+                    source_node_idx: NodeIndex,
+                    target_node_idx: NodeIndex,
+                    weight: L,
+                    external_link_id: EXTID,
+                    active: bool)
         -> LinkIndex {
             if let Err(err) = self.valid_link(source_node_idx, target_node_idx) {
                 panic!(err);
@@ -498,7 +508,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                 target_node_idx: target_node_idx,
                 external_link_id: external_link_id,
                 weight: weight,
-                active: true,
+                active: active,
             };
 
             match self.find_link_index_insert_before(source_node_idx, target_node_idx, external_link_id) {
