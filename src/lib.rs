@@ -331,12 +331,12 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
     }
 
     #[inline(always)]
-    fn link(&self, link_idx: LinkIndex) -> &Link<L, EXTID> {
+    pub fn link(&self, link_idx: LinkIndex) -> &Link<L, EXTID> {
         &self.link_item(link_idx).link
     }
 
     #[inline(always)]
-    fn link_mut(&mut self, link_idx: LinkIndex) -> &mut Link<L, EXTID> {
+    pub fn link_mut(&mut self, link_idx: LinkIndex) -> &mut Link<L, EXTID> {
         &mut(self.links[link_idx.index()].link)
     }
 
