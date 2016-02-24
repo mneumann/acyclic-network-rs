@@ -125,6 +125,10 @@ impl<'a, N, L, EXTID> LinkRefItem<'a, N, L, EXTID>
         self.link
     }
 
+    pub fn external_link_id(&self) -> EXTID {
+        self.link.external_link_id()
+    }
+
     pub fn external_source_node_id(&self) -> EXTID {
         self.network.node(self.link.source_node_idx).external_node_id()
     }
