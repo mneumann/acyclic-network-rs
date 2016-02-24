@@ -133,12 +133,20 @@ impl<'a, N, L, EXTID> LinkRefItem<'a, N, L, EXTID>
         self.link.external_link_id()
     }
 
+    pub fn source_node(&self) -> &Node<N, EXTID> {
+        self.network.node(self.link.source_node_idx)
+    }
+
+    pub fn target_node(&self) -> &Node<N, EXTID> {
+        self.network.node(self.link.target_node_idx)
+    }
+
     pub fn external_source_node_id(&self) -> EXTID {
-        self.network.node(self.link.source_node_idx).external_node_id()
+        self.source_node().external_node_id()
     }
 
     pub fn external_target_node_id(&self) -> EXTID {
-        self.network.node(self.link.target_node_idx).external_node_id()
+        self.target_node().external_node_id()
     }
 }
 
