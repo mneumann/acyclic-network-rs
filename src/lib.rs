@@ -380,6 +380,15 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         }
 
     #[inline]
+    pub fn each_link_ref<F>(&self, mut f: F)
+        where F: FnMut(LinkRefItem<N, L, EXTID>)
+    {
+        for link_item in &self.links[..] {
+            f(LinkRefItem{link: &&link_item.link, network: self});
+        }
+    }
+
+    #[inline]
     pub fn each_link_mut<F>(&mut self, mut f: F)
         where F: FnMut(&mut Link<L, EXTID>)
     {
