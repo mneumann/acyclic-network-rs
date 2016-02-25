@@ -764,136 +764,144 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             return None;
         }
 
+/// Remove the link at index `link_index`.
+    pub fn remove_link_at(&mut self, link_index: LinkIndex) {
+        let found_idx = link_index;
+        let source_node_idx = self.link(found_idx).source_node_idx;
+        let target_node_idx = self.link(found_idx).target_node_idx;
+
+        if self.link(found_idx).is_active() {
+            self.active_link_count -= 1;
+        }
+
+// remove item from chain
+
+        match (self.link_item(found_idx).prev, self.link_item(found_idx).next) {
+            (None, None) => {
+// Item is the only element of the list.
+                assert!(self.node(source_node_idx).links.head == Some(found_idx));
+                assert!(self.node(source_node_idx).links.tail == Some(found_idx));
+                self.node_mut(source_node_idx).links = List::empty();
+            }
+
+            (None, Some(next)) => {
+// Item is the first element in the list, followed by some other element.
+                assert!(self.links[next.index()].prev == Some(found_idx));
+                assert!(self.node(source_node_idx).links.head == Some(found_idx));
+                assert!(self.node(source_node_idx).links.tail != Some(found_idx));
+                self.node_mut(source_node_idx).links.head = Some(next);
+                self.links[next.index()].prev = None;
+            }
+
+            (Some(prev), None) => {
+// Item is the last element of the list, preceded by some other element.
+                assert!(self.links[prev.index()].next == Some(found_idx));
+                assert!(self.node(source_node_idx).links.tail == Some(found_idx));
+                assert!(self.node(source_node_idx).links.head != Some(found_idx));
+
+// make the previous element the new tail
+                self.node_mut(source_node_idx).links.tail = Some(prev);
+                self.links[prev.index()].next = None;
+            }
+
+            (Some(prev), Some(next)) => {
+// Item is somewhere in the middle of the list. We don't have to
+// update the head or tail pointers.
+                assert!(self.node(source_node_idx).links.head != Some(found_idx));
+                assert!(self.node(source_node_idx).links.tail != Some(found_idx));
+
+                assert!(self.links[prev.index()].next == Some(found_idx));
+                assert!(self.links[next.index()].prev == Some(found_idx));
+
+                self.links[prev.index()].next = Some(next);
+                self.links[next.index()].prev = Some(prev);
+            }
+        }
+
+        self.links[found_idx.index()].next = None;
+        self.links[found_idx.index()].prev = None;
+
+// swap the item with the last one.
+        let old_idx = LinkIndex(self.links.len() - 1);
+
+        if found_idx == old_idx {
+// if we are the last element, we can just pop it
+            let old = self.links.pop().unwrap();
+            debug_assert!(old.link.source_node_idx == source_node_idx);
+            debug_assert!(old.link.target_node_idx == target_node_idx);
+        } else {
+            let old = self.links.swap_remove(found_idx.index());
+            debug_assert!(old.link.source_node_idx == source_node_idx);
+            debug_assert!(old.link.target_node_idx == target_node_idx);
+
+// We have to change the linking of the newly at position `found_idx` placed
+// element.
+            let new_idx = found_idx;
+// change the next pointer of the previous element
+            let new_source_node_idx = self.link(new_idx).source_node_idx;
+
+            match (self.link_item(new_idx).prev, self.link_item(new_idx).next) {
+                (None, None) => {
+// the moved element was the only element in the list.
+                    assert!(self.node(new_source_node_idx).links.head == Some(old_idx));
+                    assert!(self.node(new_source_node_idx).links.tail == Some(old_idx));
+
+// Update both head and tail to the new element index.
+                    self.node_mut(new_source_node_idx).links = List {
+                        head: Some(new_idx),
+                        tail: Some(new_idx)
+                    };
+                }
+
+                (None, Some(next)) => {
+// Item is the first element in the list, followed by some other element.
+                    assert!(self.links[next.index()].prev == Some(old_idx));
+                    assert!(self.node(new_source_node_idx).links.head == Some(old_idx));
+                    assert!(self.node(new_source_node_idx).links.tail != Some(old_idx));
+                    self.node_mut(new_source_node_idx).links.head = Some(new_idx);
+                    self.links[next.index()].prev = Some(new_idx);
+                }
+
+                (Some(prev), None) => {
+// Item is the last element of the list, preceded by some other element.
+                    assert!(self.links[prev.index()].next == Some(old_idx));
+                    assert!(self.node(new_source_node_idx).links.tail == Some(old_idx));
+                    assert!(self.node(new_source_node_idx).links.head != Some(old_idx));
+
+// make the previous element the new tail
+                    self.node_mut(new_source_node_idx).links.tail = Some(new_idx);
+                    self.links[prev.index()].next = Some(new_idx);
+                }
+
+                (Some(prev), Some(next)) => {
+// Item is somewhere in the middle of the list. We don't have to
+// update the head or tail pointers.
+                    assert!(self.node(new_source_node_idx).links.head != Some(old_idx));
+                    assert!(self.node(new_source_node_idx).links.tail != Some(old_idx));
+
+                    assert!(self.links[prev.index()].next == Some(old_idx));
+                    assert!(self.links[next.index()].prev == Some(old_idx));
+
+                    self.links[prev.index()].next = Some(new_idx);
+                    self.links[next.index()].prev = Some(new_idx);
+                }
+            }
+        }
+
+        assert!(self.node(source_node_idx).out_degree > 0);
+        assert!(self.node(target_node_idx).in_degree > 0);
+        self.node_mut(source_node_idx).out_degree -= 1;
+        self.node_mut(target_node_idx).in_degree -= 1;
+        self.link_count -= 1;
+    }
+
 /// Remove the first link that matches `source_node_idx` and `target_node_idx`.
 /// XXX
     pub fn remove_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
         if let Some(found_idx) = self.find_link_index_exact(source_node_idx, target_node_idx) {
             debug_assert!(self.link(found_idx).source_node_idx == source_node_idx);
             debug_assert!(self.link(found_idx).target_node_idx == target_node_idx);
-
-            if self.link(found_idx).is_active() {
-                self.active_link_count -= 1;
-            }
-
-// remove item from chain
-
-            match (self.link_item(found_idx).prev, self.link_item(found_idx).next) {
-                (None, None) => {
-// Item is the only element of the list.
-                    assert!(self.node(source_node_idx).links.head == Some(found_idx));
-                    assert!(self.node(source_node_idx).links.tail == Some(found_idx));
-                    self.node_mut(source_node_idx).links = List::empty();
-                }
-
-                (None, Some(next)) => {
-// Item is the first element in the list, followed by some other element.
-                    assert!(self.links[next.index()].prev == Some(found_idx));
-                    assert!(self.node(source_node_idx).links.head == Some(found_idx));
-                    assert!(self.node(source_node_idx).links.tail != Some(found_idx));
-                    self.node_mut(source_node_idx).links.head = Some(next);
-                    self.links[next.index()].prev = None;
-                }
-
-                (Some(prev), None) => {
-// Item is the last element of the list, preceded by some other element.
-                    assert!(self.links[prev.index()].next == Some(found_idx));
-                    assert!(self.node(source_node_idx).links.tail == Some(found_idx));
-                    assert!(self.node(source_node_idx).links.head != Some(found_idx));
-
-// make the previous element the new tail
-                    self.node_mut(source_node_idx).links.tail = Some(prev);
-                    self.links[prev.index()].next = None;
-                }
-
-                (Some(prev), Some(next)) => {
-// Item is somewhere in the middle of the list. We don't have to
-// update the head or tail pointers.
-                    assert!(self.node(source_node_idx).links.head != Some(found_idx));
-                    assert!(self.node(source_node_idx).links.tail != Some(found_idx));
-
-                    assert!(self.links[prev.index()].next == Some(found_idx));
-                    assert!(self.links[next.index()].prev == Some(found_idx));
-
-                    self.links[prev.index()].next = Some(next);
-                    self.links[next.index()].prev = Some(prev);
-                }
-            }
-
-            self.links[found_idx.index()].next = None;
-            self.links[found_idx.index()].prev = None;
-
-// swap the item with the last one.
-            let old_idx = LinkIndex(self.links.len() - 1);
-
-            if found_idx == old_idx {
-// if we are the last element, we can just pop it
-                let old = self.links.pop().unwrap();
-                debug_assert!(old.link.source_node_idx == source_node_idx);
-                debug_assert!(old.link.target_node_idx == target_node_idx);
-            } else {
-                let old = self.links.swap_remove(found_idx.index());
-                debug_assert!(old.link.source_node_idx == source_node_idx);
-                debug_assert!(old.link.target_node_idx == target_node_idx);
-
-// We have to change the linking of the newly at position `found_idx` placed
-// element.
-                let new_idx = found_idx;
-// change the next pointer of the previous element
-                let new_source_node_idx = self.link(new_idx).source_node_idx;
-
-                match (self.link_item(new_idx).prev, self.link_item(new_idx).next) {
-                    (None, None) => {
-// the moved element was the only element in the list.
-                        assert!(self.node(new_source_node_idx).links.head == Some(old_idx));
-                        assert!(self.node(new_source_node_idx).links.tail == Some(old_idx));
-
-// Update both head and tail to the new element index.
-                        self.node_mut(new_source_node_idx).links = List {
-                            head: Some(new_idx),
-                            tail: Some(new_idx)
-                        };
-                    }
-
-                    (None, Some(next)) => {
-// Item is the first element in the list, followed by some other element.
-                        assert!(self.links[next.index()].prev == Some(old_idx));
-                        assert!(self.node(new_source_node_idx).links.head == Some(old_idx));
-                        assert!(self.node(new_source_node_idx).links.tail != Some(old_idx));
-                        self.node_mut(new_source_node_idx).links.head = Some(new_idx);
-                        self.links[next.index()].prev = Some(new_idx);
-                    }
-
-                    (Some(prev), None) => {
-// Item is the last element of the list, preceded by some other element.
-                        assert!(self.links[prev.index()].next == Some(old_idx));
-                        assert!(self.node(new_source_node_idx).links.tail == Some(old_idx));
-                        assert!(self.node(new_source_node_idx).links.head != Some(old_idx));
-
-// make the previous element the new tail
-                        self.node_mut(new_source_node_idx).links.tail = Some(new_idx);
-                        self.links[prev.index()].next = Some(new_idx);
-                    }
-
-                    (Some(prev), Some(next)) => {
-// Item is somewhere in the middle of the list. We don't have to
-// update the head or tail pointers.
-                        assert!(self.node(new_source_node_idx).links.head != Some(old_idx));
-                        assert!(self.node(new_source_node_idx).links.tail != Some(old_idx));
-
-                        assert!(self.links[prev.index()].next == Some(old_idx));
-                        assert!(self.links[next.index()].prev == Some(old_idx));
-
-                        self.links[prev.index()].next = Some(new_idx);
-                        self.links[next.index()].prev = Some(new_idx);
-                    }
-                }
-            }
-
-            assert!(self.node(source_node_idx).out_degree > 0);
-            assert!(self.node(target_node_idx).in_degree > 0);
-            self.node_mut(source_node_idx).out_degree -= 1;
-            self.node_mut(target_node_idx).in_degree -= 1;
-            self.link_count -= 1;
+            self.remove_link_at(found_idx);
             return true;
         }
         else {
