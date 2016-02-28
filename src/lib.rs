@@ -595,6 +595,16 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         }
     }
 
+    pub fn enable_link_index(&mut self, link_idx: LinkIndex) -> bool {
+        if !self.link(link_idx).is_active() {
+            self.active_link_count += 1;
+            self.link_mut(link_idx).active = true;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
     pub fn disable_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
         if let Some(link_idx) = self.find_link_index_exact(source_node_idx, target_node_idx) {
             return self.disable_link_index(link_idx);
@@ -604,11 +614,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
 
     pub fn enable_link(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
         if let Some(link_idx) = self.find_link_index_exact(source_node_idx, target_node_idx) {
-            if !self.link(link_idx).is_active() {
-                self.active_link_count += 1;
-                self.link_mut(link_idx).active = true;
-                return true;
-            }
+            return self.enable_link_index(link_idx);
         }
         return false;
     }
