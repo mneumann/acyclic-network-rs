@@ -397,9 +397,42 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         }
     }
 
-    /// # Complexity
-    ///
-    /// O(number of links)
+    fn inactive_link_count(&self) -> usize {
+        assert!(self.link_count >= self.active_link_count);
+        self.link_count - self.active_link_count
+    }
+
+/// # Complexity
+///
+/// O(number of links)
+
+    pub fn random_inactive_link_index<R: Rng>(&self, rng: &mut R) -> Option<LinkIndex> {
+        let n = self.inactive_link_count();
+        assert!(n <= self.link_count);
+        if n > 0 {
+            let mut nth_link: usize = rng.gen_range(0, n);
+
+            for node in self.nodes.iter() {
+                for (link_idx, link) in node.links.iter(&self.links) {
+                    if !link.is_active() {
+                        if nth_link > 0 {
+                            nth_link -= 1;
+                        } else {
+                            return Some(link_idx);
+                        }
+                    }
+                }
+            }
+        }
+
+        return None;
+    }
+
+
+
+/// # Complexity
+///
+/// O(number of links)
 
     pub fn random_active_link_index<R: Rng>(&self, rng: &mut R) -> Option<LinkIndex> {
         let n = self.active_link_count;
@@ -423,9 +456,9 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         return None;
     }
 
-    /// # Complexity
-    ///
-    /// O(1)
+/// # Complexity
+///
+/// O(1)
 
     pub fn random_link_index<R: Rng>(&self, rng: &mut R) -> Option<LinkIndex> {
         let n = self.link_count;
@@ -555,7 +588,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
     pub fn disable_link_index(&mut self, link_idx: LinkIndex) -> bool {
         if self.link(link_idx).is_active() {
             self.active_link_count -= 1;
-            self.link_mut(link_idx).active = false; 
+            self.link_mut(link_idx).active = false;
             return true;
         } else {
             return false;
@@ -573,7 +606,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         if let Some(link_idx) = self.find_link_index_exact(source_node_idx, target_node_idx) {
             if !self.link(link_idx).is_active() {
                 self.active_link_count += 1;
-                self.link_mut(link_idx).active = true; 
+                self.link_mut(link_idx).active = true;
                 return true;
             }
         }
