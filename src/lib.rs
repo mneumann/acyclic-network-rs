@@ -206,26 +206,32 @@ impl<L, EXTID> Link<L, EXTID>
     where L: Copy + Debug + Send + Sized,
           EXTID: Copy + Debug + Send + Sized + Ord
 {
+    #[inline(always)]
     pub fn external_link_id(&self) -> EXTID {
         self.external_link_id
     }
 
+    #[inline(always)]
     pub fn source_node_index(&self) -> NodeIndex {
         self.source_node_idx
     }
 
+    #[inline(always)]
     pub fn target_node_index(&self) -> NodeIndex {
         self.target_node_idx
     }
 
+    #[inline(always)]
     pub fn is_active(&self) -> bool {
         self.active
     }
 
+    #[inline(always)]
     pub fn weight(&self) -> L {
         self.weight
     }
 
+    #[inline(always)]
     pub fn set_weight(&mut self, new_weight: L) {
         self.weight = new_weight;
     }
