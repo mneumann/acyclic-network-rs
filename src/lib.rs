@@ -35,6 +35,10 @@ impl NodeIndex {
     pub fn index(&self) -> usize {
         self.0
     }
+
+    pub fn new(index: usize) -> Self {
+        NodeIndex(index)
+    }
 }
 
 impl LinkIndex {
