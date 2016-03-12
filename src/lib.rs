@@ -299,7 +299,6 @@ pub struct Network<N: NodeType,
 {
     nodes: Vec<Node<N, EXTID>>,
     links: Vec<LinkItem<L, EXTID>>, // XXX: Rename to link_items
-    node_count: usize,
     link_count: usize,
     active_link_count: usize,
 }
@@ -309,7 +308,6 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         Network {
             nodes: Vec::new(),
             links: Vec::new(),
-            node_count: 0,
             link_count: 0,
             active_link_count: 0,
         }
@@ -317,7 +315,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
 
     #[inline]
     pub fn node_count(&self) -> usize {
-        self.node_count
+        self.nodes.len()
     }
 
     #[inline]
@@ -557,8 +555,37 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
     /// place and rewires all links. As such, this is a quite
     /// heavy operation!
     ///
+    /// # Danger!
+    ///
+    /// The external NodeIndex of the last node is changed!
+    /// 
+    /// # Complexity
+    ///
+    /// Worst case O(e), where `e` is the total number of edges in the graph.
+    ///
     pub fn remove_node(&mut self, node_idx: NodeIndex) {
-        //&self.nodes[node_idx.index()]
+        let node_count = self.nodes.len();
+        assert!(node_count > 0);
+        self.remove_all_inout_links_of_node(node_idx);
+        let last_idx = NodeIndex(node_count - 1);
+        if node_idx == last_idx {
+            // the node is the last! simply pop it off from the end of the array!
+            let _node = self.nodes.pop();
+            assert!(self.node_count() == node_count - 1);
+        } else {
+            // the node is not the last. move the node at `last_idx` into our position.
+            let _node = self.nodes.swap_remove(node_idx.index());
+            // then substitute `last_idx` by `node_idx` in every edge.
+
+            for link_item in self.links.iter_mut() {
+                if link_item.link.target_node_idx == last_idx {
+                    link_item.link.target_node_idx = node_idx;
+                }
+                if link_item.link.source_node_idx == last_idx {
+                    link_item.link.source_node_idx = node_idx;
+                }
+            }
+        }
     }
 
 
@@ -575,14 +602,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             in_degree: 0,
             out_degree: 0,
         });
-        self.node_count += 1;
         return node_idx;
-    }
-
-    pub fn delete_node(&mut self, _node_idx: NodeIndex) {
-        self.node_count -= 1;
-        unimplemented!();
-// XXX
     }
 
 /// Returns a random link between two unconnected nodes, which would not
@@ -1075,7 +1095,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
 #[cfg(test)]
 mod tests {
     use rand;
-    use super::{ExternalId, Network, NodeType};
+    use super::{ExternalId, Network, NodeType, NodeIndex};
 
     #[derive(Clone, Debug)]
     enum NodeT {
@@ -1432,5 +1452,70 @@ mod tests {
         assert_eq!(0, g.link_count());
     }
 
+    #[test]
+    fn test_remove_node() {
+        let mut g = Network::new();
+        let i1 = g.add_node(NodeT::Input, ());
+        let h1 = g.add_node(NodeT::Hidden, ());
+        let h2 = g.add_node(NodeT::Hidden, ());
+        let o1 = g.add_node(NodeT::Output, ());
+
+        g.add_link_unordered(i1, h1, 0.0, ());
+        g.add_link_unordered(i1, h2, 0.0, ());
+        g.add_link_unordered(h1, o1, 0.0, ());
+        g.add_link_unordered(h2, o1, 0.0, ());
+
+        assert_eq!(2, g.node(i1).out_degree());
+        assert_eq!(1, g.node(h1).in_degree());
+        assert_eq!(1, g.node(h2).in_degree());
+        assert_eq!(1, g.node(h1).out_degree());
+        assert_eq!(1, g.node(h2).out_degree());
+        assert_eq!(2, g.node(o1).in_degree());
+        assert_eq!(0, g.node(o1).out_degree());
+        assert_eq!(4, g.link_count());
+        assert_eq!(4, g.node_count());
+
+        assert_eq!(NodeIndex(0), i1);
+        assert_eq!(NodeIndex(3), o1);
+        g.remove_node(i1);
+        let o1 = i1;
+        drop(i1);
+        assert_eq!(NodeIndex(0), o1);
+
+        assert_eq!(0, g.node(h1).in_degree());
+        assert_eq!(0, g.node(h2).in_degree());
+        assert_eq!(1, g.node(h1).out_degree());
+        assert_eq!(1, g.node(h2).out_degree());
+        assert_eq!(2, g.node(o1).in_degree());
+        assert_eq!(0, g.node(o1).out_degree());
+        assert_eq!(2, g.link_count());
+        assert_eq!(3, g.node_count());
+
+        assert_eq!(NodeIndex(2), h2);
+        g.remove_node(h2);
+        drop(h2);
+
+        assert_eq!(0, g.node(h1).in_degree());
+        assert_eq!(1, g.node(h1).out_degree());
+        assert_eq!(1, g.node(o1).in_degree());
+        assert_eq!(0, g.node(o1).out_degree());
+        assert_eq!(1, g.link_count());
+        assert_eq!(2, g.node_count());
+
+        assert_eq!(NodeIndex(0), o1);
+        g.remove_node(o1);
+        let h1 = o1;
+        drop(o1);
+        assert_eq!(NodeIndex(0), h1);
+
+        assert_eq!(0, g.node(h1).in_degree());
+        assert_eq!(0, g.node(h1).out_degree());
+        assert_eq!(0, g.link_count());
+        assert_eq!(1, g.node_count());
+
+        assert_eq!(NodeIndex(0), h1);
+        g.remove_node(h1);
+        assert_eq!(0, g.node_count());
+    }
 
 }
