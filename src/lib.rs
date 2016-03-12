@@ -475,6 +475,39 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         return None;
     }
 
+    /// Iterate all outgoing links of `node_idx` and update the target nodes
+    /// link count, as well as the global link count.
+    ///
+    /// # Complexity
+    ///
+    /// O(k), where `k` is the number of edges of `node_idx`.
+
+    pub fn remove_all_outgoing_links_of_node(&mut self, node_idx: NodeIndex) {
+        let mut iter = LinkIter::new(self.node(node_idx).links.head, &self.links);
+
+        for (link_idx, link) in iter {
+            let mut target_node = &mut self.nodes[link.target_node_index().index()];
+            target_node.in_degree -= 1;
+            self.link_count -= 1;
+            if link.is_active() {
+                self.active_link_count -= 1;
+            }
+        }
+        self.nodes[node_idx.index()].out_degree = 0;
+        self.nodes[node_idx.index()].links = List::empty();
+    }
+
+    /// Remove the node with index `node_idx` including
+    /// all incoming and outgoing links.
+    ///
+    /// Moves the last node in the nodes array into the empty
+    /// place and rewires all links. As such, this is a quite
+    /// heavy operation!
+    ///
+    pub fn remove_node(&mut self, node_idx: NodeIndex) {
+        //&self.nodes[node_idx.index()]
+    }
+
 
 /// Adds a new node to the network with type `node_type` and the associated
 /// id `external_node_id`. The `external_node_id` is stored in the node and
@@ -1183,6 +1216,43 @@ mod tests {
 
         assert!(g.first_link_of_node(i1).is_none());
         assert!(g.last_link_of_node(i1).is_none());
+    }
+
+    #[test]
+    fn test_remove_all_outgoing_links() {
+        let mut g = Network::new();
+        let i1 = g.add_node(NodeT::Input, ());
+        let h1 = g.add_node(NodeT::Hidden, ());
+        let h2 = g.add_node(NodeT::Hidden, ());
+        let o1 = g.add_node(NodeT::Output, ());
+
+        g.add_link_unordered(i1, h1, 0.0, ());
+        g.add_link_unordered(i1, h2, 0.0, ());
+        g.add_link_unordered(h1, o1, 0.0, ());
+        g.add_link_unordered(h2, o1, 0.0, ());
+
+        assert_eq!(2, g.node(i1).out_degree());
+        assert_eq!(1, g.node(h1).in_degree());
+        assert_eq!(1, g.node(h2).in_degree());
+        assert_eq!(1, g.node(h1).out_degree());
+        assert_eq!(1, g.node(h2).out_degree());
+        assert_eq!(2, g.node(o1).in_degree());
+        assert_eq!(0, g.node(o1).out_degree());
+        assert_eq!(4, g.link_count());
+
+        g.remove_all_outgoing_links_of_node(i1);
+
+        assert!(g.first_link_of_node(i1).is_none());
+        assert!(g.last_link_of_node(i1).is_none());
+
+        assert_eq!(0, g.node(i1).out_degree());
+        assert_eq!(0, g.node(h1).in_degree());
+        assert_eq!(0, g.node(h2).in_degree());
+        assert_eq!(1, g.node(h1).out_degree());
+        assert_eq!(1, g.node(h2).out_degree());
+        assert_eq!(2, g.node(o1).in_degree());
+        assert_eq!(0, g.node(o1).out_degree());
+        assert_eq!(2, g.link_count());
     }
 
 
