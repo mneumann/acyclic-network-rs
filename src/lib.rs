@@ -700,6 +700,36 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             self.add_link_with_active(source_node_idx, target_node_idx, weight, external_link_id, true)
         }
 
+
+    // This will destroy the ordering relation of links. Do not mix with `add_link` or `add_link_with_active`.
+
+    pub fn add_link_unordered(&mut self,
+                    source_node_idx: NodeIndex,
+                    target_node_idx: NodeIndex,
+                    weight: L,
+                    external_link_id: EXTID)
+        -> LinkIndex {
+            if let Err(err) = self.valid_link(source_node_idx, target_node_idx) {
+                panic!(err);
+            }
+
+            self.link_count += 1;
+            self.active_link_count += 1;
+
+            self.node_mut(source_node_idx).out_degree += 1;
+            self.node_mut(target_node_idx).in_degree += 1;
+
+            let link = Link {
+                source_node_idx: source_node_idx,
+                target_node_idx: target_node_idx,
+                external_link_id: external_link_id,
+                weight: weight,
+                active: true,
+            };
+
+            return self.append(source_node_idx, link);
+        }
+
     // Note: Doesn't check for cycles (except in the simple reflexive case).
 // Note that we keep the list of links sorted according to it's
 // external_link_id.
@@ -1095,6 +1125,58 @@ mod tests {
         assert!(g.last_link_of_node(i1).is_none());
 
         // XXX: test for sort order
+    }
+
+    #[test]
+    fn test_add_remove_link_unordered() {
+        let mut g = Network::new();
+        let i1 = g.add_node(NodeT::Input, ());
+        let h1 = g.add_node(NodeT::Hidden, ());
+        let h2 = g.add_node(NodeT::Hidden, ());
+
+        g.add_link_unordered(i1, h1, 0.0, ());
+        g.add_link_unordered(i1, h2, 0.0, ());
+
+        assert_eq!(h1,
+                   g.first_link_of_node(i1).unwrap().target_node_idx);
+        assert_eq!(h2,
+                   g.last_link_of_node(i1).unwrap().target_node_idx);
+
+        assert_eq!(2, g.node(i1).out_degree());
+        assert_eq!(1, g.node(h1).in_degree());
+        assert_eq!(1, g.node(h2).in_degree());
+        assert_eq!(2, g.link_count());
+
+        assert_eq!(true, g.remove_link(i1, h1));
+        assert_eq!(1, g.node(i1).out_degree());
+        assert_eq!(0, g.node(h1).in_degree());
+        assert_eq!(1, g.node(h2).in_degree());
+        assert_eq!(1, g.link_count());
+
+        assert_eq!(h2,
+                   g.first_link_of_node(i1).unwrap().target_node_idx);
+        assert_eq!(h2,
+                   g.last_link_of_node(i1).unwrap().target_node_idx);
+
+        assert_eq!(false, g.remove_link(i1, h1));
+        assert_eq!(1, g.node(i1).out_degree());
+        assert_eq!(0, g.node(h1).in_degree());
+        assert_eq!(1, g.node(h2).in_degree());
+        assert_eq!(1, g.link_count());
+
+        assert_eq!(h2,
+                   g.first_link_of_node(i1).unwrap().target_node_idx);
+        assert_eq!(h2,
+                   g.last_link_of_node(i1).unwrap().target_node_idx);
+
+        assert_eq!(true, g.remove_link(i1, h2));
+        assert_eq!(0, g.node(i1).out_degree());
+        assert_eq!(0, g.node(h1).in_degree());
+        assert_eq!(0, g.node(h2).in_degree());
+        assert_eq!(0, g.link_count());
+
+        assert!(g.first_link_of_node(i1).is_none());
+        assert!(g.last_link_of_node(i1).is_none());
     }
 
 
