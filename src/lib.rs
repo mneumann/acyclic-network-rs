@@ -278,6 +278,10 @@ impl<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = ExternalId> Node<N,
         &self.node_type
     }
 
+    pub fn set_node_type(&mut self, node_type: N) {
+        self.node_type = node_type;
+    }
+
     pub fn external_node_id(&self) -> EXTID {
         self.external_node_id
     }
