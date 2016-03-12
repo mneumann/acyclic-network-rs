@@ -341,7 +341,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
     }
 
     #[inline(always)]
-    fn node_mut(&mut self, node_idx: NodeIndex) -> &mut Node<N, EXTID> {
+    pub fn node_mut(&mut self, node_idx: NodeIndex) -> &mut Node<N, EXTID> {
         &mut self.nodes[node_idx.index()]
     }
 
