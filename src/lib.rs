@@ -475,8 +475,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         return None;
     }
 
-    /// Iterate all outgoing links of `node_idx` and update the target nodes
-    /// link count, as well as the global link count.
+    /// Removes all outgoing links of node `node_idx`.
     ///
     /// # Complexity
     ///
@@ -487,6 +486,65 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
         for (link_idx, _) in self.link_iter_for_node(node_idx) {
             links.push(link_idx);
         }
+        for link in links {
+            self.remove_link_at(link);
+        }
+    }
+
+    /// Removes all incoming links to node `node_idx`.
+    ///
+    /// # Complexity
+    ///
+    /// O(e), where `e` is the total number of edges in the graph! 
+
+    pub fn remove_all_incoming_links_of_node(&mut self, node_idx: NodeIndex) {
+        let n = self.node(node_idx).in_degree as usize;
+
+        if n == 0 {
+            // If a node does not have any incoming links, we are done!
+            return;
+        }
+
+        let mut links = Vec::with_capacity(n);
+
+        for (link_idx, link_item) in self.links.iter().enumerate() {
+            if link_item.link.target_node_idx == node_idx {
+                links.push(LinkIndex(link_idx));
+            }
+        }
+
+        assert!(links.len() == n);
+
+        for link in links {
+            self.remove_link_at(link);
+        }
+    }
+
+    /// Removes all links to and from node `node_idx`.
+    ///
+    /// # Complexity
+    ///
+    /// O(e), where `e` is the total number of edges in the graph! 
+
+    pub fn remove_all_inout_links_of_node(&mut self, node_idx: NodeIndex) {
+        let n = self.node(node_idx).in_degree as usize;
+        let m = self.node(node_idx).out_degree as usize;
+
+        if n == 0 && m == 0 {
+            // If a node does not have any incoming and outgoing links, we are done!
+            return;
+        }
+
+        let mut links = Vec::with_capacity(n+m);
+
+        for (link_idx, link_item) in self.links.iter().enumerate() {
+            if link_item.link.target_node_idx == node_idx || link_item.link.source_node_idx == node_idx {
+                links.push(LinkIndex(link_idx));
+            }
+        }
+
+        assert!(links.len() == n+m);
+
         for link in links {
             self.remove_link_at(link);
         }
@@ -1248,6 +1306,130 @@ mod tests {
         assert_eq!(2, g.node(o1).in_degree());
         assert_eq!(0, g.node(o1).out_degree());
         assert_eq!(2, g.link_count());
+    }
+
+    #[test]
+    fn test_remove_all_incoming_links() {
+        let mut g = Network::new();
+        let i1 = g.add_node(NodeT::Input, ());
+        let h1 = g.add_node(NodeT::Hidden, ());
+        let h2 = g.add_node(NodeT::Hidden, ());
+        let o1 = g.add_node(NodeT::Output, ());
+
+        g.add_link_unordered(i1, h1, 0.0, ());
+        g.add_link_unordered(i1, h2, 0.0, ());
+        g.add_link_unordered(h1, o1, 0.0, ());
+        g.add_link_unordered(h2, o1, 0.0, ());
+
+        assert_eq!(2, g.node(i1).out_degree());
+        assert_eq!(1, g.node(h1).in_degree());
+        assert_eq!(1, g.node(h2).in_degree());
+        assert_eq!(1, g.node(h1).out_degree());
+        assert_eq!(1, g.node(h2).out_degree());
+        assert_eq!(2, g.node(o1).in_degree());
+        assert_eq!(0, g.node(o1).out_degree());
+        assert_eq!(4, g.link_count());
+        assert!(g.first_link_of_node(i1).is_some());
+        assert!(g.last_link_of_node(i1).is_some());
+
+        g.remove_all_incoming_links_of_node(i1);
+
+        assert_eq!(2, g.node(i1).out_degree());
+        assert_eq!(1, g.node(h1).in_degree());
+        assert_eq!(1, g.node(h2).in_degree());
+        assert_eq!(1, g.node(h1).out_degree());
+        assert_eq!(1, g.node(h2).out_degree());
+        assert_eq!(2, g.node(o1).in_degree());
+        assert_eq!(0, g.node(o1).out_degree());
+        assert_eq!(4, g.link_count());
+        assert!(g.first_link_of_node(i1).is_some());
+        assert!(g.last_link_of_node(i1).is_some());
+
+        g.remove_all_incoming_links_of_node(h1);
+
+        assert_eq!(1, g.node(i1).out_degree());
+        assert_eq!(0, g.node(h1).in_degree());
+        assert_eq!(1, g.node(h2).in_degree());
+        assert_eq!(1, g.node(h1).out_degree());
+        assert_eq!(1, g.node(h2).out_degree());
+        assert_eq!(2, g.node(o1).in_degree());
+        assert_eq!(0, g.node(o1).out_degree());
+        assert_eq!(3, g.link_count());
+        assert!(g.first_link_of_node(i1).is_some());
+        assert!(g.last_link_of_node(i1).is_some());
+
+        g.remove_all_incoming_links_of_node(h2);
+
+        assert_eq!(0, g.node(i1).out_degree());
+        assert_eq!(0, g.node(h1).in_degree());
+        assert_eq!(0, g.node(h2).in_degree());
+        assert_eq!(1, g.node(h1).out_degree());
+        assert_eq!(1, g.node(h2).out_degree());
+        assert_eq!(2, g.node(o1).in_degree());
+        assert_eq!(0, g.node(o1).out_degree());
+        assert_eq!(2, g.link_count());
+        assert!(g.first_link_of_node(i1).is_none());
+        assert!(g.last_link_of_node(i1).is_none());
+    }
+
+    #[test]
+    fn test_remove_all_inout_links() {
+        let mut g = Network::new();
+        let i1 = g.add_node(NodeT::Input, ());
+        let h1 = g.add_node(NodeT::Hidden, ());
+        let h2 = g.add_node(NodeT::Hidden, ());
+        let o1 = g.add_node(NodeT::Output, ());
+
+        g.add_link_unordered(i1, h1, 0.0, ());
+        g.add_link_unordered(i1, h2, 0.0, ());
+        g.add_link_unordered(h1, o1, 0.0, ());
+        g.add_link_unordered(h2, o1, 0.0, ());
+
+        assert_eq!(2, g.node(i1).out_degree());
+        assert_eq!(1, g.node(h1).in_degree());
+        assert_eq!(1, g.node(h2).in_degree());
+        assert_eq!(1, g.node(h1).out_degree());
+        assert_eq!(1, g.node(h2).out_degree());
+        assert_eq!(2, g.node(o1).in_degree());
+        assert_eq!(0, g.node(o1).out_degree());
+        assert_eq!(4, g.link_count());
+
+        g.remove_all_inout_links_of_node(i1);
+
+        assert!(g.first_link_of_node(i1).is_none());
+        assert!(g.last_link_of_node(i1).is_none());
+
+        assert_eq!(0, g.node(i1).out_degree());
+        assert_eq!(0, g.node(h1).in_degree());
+        assert_eq!(0, g.node(h2).in_degree());
+        assert_eq!(1, g.node(h1).out_degree());
+        assert_eq!(1, g.node(h2).out_degree());
+        assert_eq!(2, g.node(o1).in_degree());
+        assert_eq!(0, g.node(o1).out_degree());
+        assert_eq!(2, g.link_count());
+
+
+        g.remove_all_inout_links_of_node(h1);
+
+        assert_eq!(0, g.node(i1).out_degree());
+        assert_eq!(0, g.node(h1).in_degree());
+        assert_eq!(0, g.node(h2).in_degree());
+        assert_eq!(0, g.node(h1).out_degree());
+        assert_eq!(1, g.node(h2).out_degree());
+        assert_eq!(1, g.node(o1).in_degree());
+        assert_eq!(0, g.node(o1).out_degree());
+        assert_eq!(1, g.link_count());
+
+        g.remove_all_inout_links_of_node(o1);
+
+        assert_eq!(0, g.node(i1).out_degree());
+        assert_eq!(0, g.node(h1).in_degree());
+        assert_eq!(0, g.node(h2).in_degree());
+        assert_eq!(0, g.node(h1).out_degree());
+        assert_eq!(0, g.node(h2).out_degree());
+        assert_eq!(0, g.node(o1).in_degree());
+        assert_eq!(0, g.node(o1).out_degree());
+        assert_eq!(0, g.link_count());
     }
 
 
