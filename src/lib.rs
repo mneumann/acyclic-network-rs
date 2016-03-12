@@ -282,6 +282,10 @@ impl<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = ExternalId> Node<N,
         self.external_node_id
     }
 
+    pub fn degree(&self) -> usize {
+        self.in_degree as usize + self.out_degree as usize
+    }
+
     pub fn in_degree(&self) -> u32 {
         self.in_degree
     }
