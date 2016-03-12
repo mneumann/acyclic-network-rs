@@ -483,18 +483,13 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
     /// O(k), where `k` is the number of edges of `node_idx`.
 
     pub fn remove_all_outgoing_links_of_node(&mut self, node_idx: NodeIndex) {
-        let mut iter = LinkIter::new(self.node(node_idx).links.head, &self.links);
-
-        for (link_idx, link) in iter {
-            let mut target_node = &mut self.nodes[link.target_node_index().index()];
-            target_node.in_degree -= 1;
-            self.link_count -= 1;
-            if link.is_active() {
-                self.active_link_count -= 1;
-            }
+        let mut links = Vec::with_capacity(self.node(node_idx).out_degree as usize);
+        for (link_idx, _) in self.link_iter_for_node(node_idx) {
+            links.push(link_idx);
         }
-        self.nodes[node_idx.index()].out_degree = 0;
-        self.nodes[node_idx.index()].links = List::empty();
+        for link in links {
+            self.remove_link_at(link);
+        }
     }
 
     /// Remove the node with index `node_idx` including
