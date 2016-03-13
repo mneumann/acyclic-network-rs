@@ -577,13 +577,13 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
     ///
     pub fn remove_node(&mut self, node_idx: NodeIndex) {
         let node_count = self.nodes.len();
+        assert!(node_idx.index() < node_count);
         assert!(node_count > 0);
         self.remove_all_inout_links_of_node(node_idx);
         let last_idx = NodeIndex(node_count - 1);
         if node_idx == last_idx {
             // the node is the last! simply pop it off from the end of the array!
             let _node = self.nodes.pop();
-            assert!(self.node_count() == node_count - 1);
         } else {
             // the node is not the last. move the node at `last_idx` into our position.
             let _node = self.nodes.swap_remove(node_idx.index());
@@ -598,6 +598,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
                 }
             }
         }
+        assert!(self.node_count() == node_count - 1);
     }
 
 
