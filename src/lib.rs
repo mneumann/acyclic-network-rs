@@ -487,25 +487,27 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
 
     /// Removes all outgoing links of node `node_idx`.
     ///
+    /// XXX: This can be optimized.
+    ///
     /// # Complexity
     ///
     /// O(k), where `k` is the number of edges of `node_idx`.
 
     pub fn remove_all_outgoing_links_of_node(&mut self, node_idx: NodeIndex) {
-        let mut links = Vec::with_capacity(self.node(node_idx).out_degree as usize);
-        for (link_idx, _) in self.link_iter_for_node(node_idx) {
-            links.push(link_idx);
+        let n = self.node(node_idx).out_degree as usize;
+
+        for _ in 0..n {
+            let link_index = self.node(node_idx).links.head.unwrap();
+            self.remove_link_at(link_index);
         }
-        for link in links {
-            self.remove_link_at(link);
-        }
+        assert!(self.node(node_idx).links.head.is_none());
+        assert!(self.node(node_idx).links.tail.is_none());
+        assert!(self.node(node_idx).out_degree == 0);
     }
 
     /// Removes all incoming links to node `node_idx`.
     ///
-    /// # Complexity
-    ///
-    /// O(e), where `e` is the total number of edges in the graph! 
+    /// XXX: This can be optimized.
 
     pub fn remove_all_incoming_links_of_node(&mut self, node_idx: NodeIndex) {
         let n = self.node(node_idx).in_degree as usize;
@@ -515,49 +517,24 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             return;
         }
 
-        let mut links = Vec::with_capacity(n);
-
-        for (link_idx, link_item) in self.links.iter().enumerate() {
-            if link_item.link.target_node_idx == node_idx {
-                links.push(LinkIndex(link_idx));
+        // for each node other than `node_idx` try to delete a link to node_idx.
+        for src in 0..self.node_count() {
+            let src_idx = NodeIndex(src);
+            if src_idx != node_idx {
+                if let Some(link_index) = self.find_link_index_exact(src_idx, node_idx) {
+                    self.remove_link_at(link_index);
+                }
             }
         }
 
-        assert!(links.len() == n);
-
-        for link in links {
-            self.remove_link_at(link);
-        }
+        assert!(self.node(node_idx).in_degree == 0);
     }
 
     /// Removes all links to and from node `node_idx`.
-    ///
-    /// # Complexity
-    ///
-    /// O(e), where `e` is the total number of edges in the graph! 
 
     pub fn remove_all_inout_links_of_node(&mut self, node_idx: NodeIndex) {
-        let n = self.node(node_idx).in_degree as usize;
-        let m = self.node(node_idx).out_degree as usize;
-
-        if n == 0 && m == 0 {
-            // If a node does not have any incoming and outgoing links, we are done!
-            return;
-        }
-
-        let mut links = Vec::with_capacity(n+m);
-
-        for (link_idx, link_item) in self.links.iter().enumerate() {
-            if link_item.link.target_node_idx == node_idx || link_item.link.source_node_idx == node_idx {
-                links.push(LinkIndex(link_idx));
-            }
-        }
-
-        assert!(links.len() == n+m);
-
-        for link in links {
-            self.remove_link_at(link);
-        }
+        self.remove_all_outgoing_links_of_node(node_idx);
+        self.remove_all_incoming_links_of_node(node_idx);
     }
 
     /// Remove the node with index `node_idx` including
