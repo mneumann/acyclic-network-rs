@@ -922,6 +922,10 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
             return None;
         }
 
+    pub fn has_link(&self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
+        self.find_link_index_exact(source_node_idx, target_node_idx).is_some()
+    }
+
     fn find_link_index_exact(&self,
                              source_node_idx: NodeIndex,
                              target_node_idx: NodeIndex)
