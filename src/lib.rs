@@ -109,7 +109,7 @@ pub struct LinkRefIter<'a, N, L, EXTID>
     network: &'a Network<N, L, EXTID>,
 }
 
-/// A LinkRefItem includes a pointer to the network, 
+/// A LinkRefItem includes a pointer to the network,
 /// as such, it is read only.
 pub struct LinkRefItem<'a, N, L, EXTID>
     where N: NodeType + 'a,
@@ -273,7 +273,7 @@ pub struct Node<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = External
     out_degree: u32,
 }
 
-impl<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = ExternalId> Node<N, EXTID> {
+impl<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord> Node<N, EXTID> {
     pub fn node_type(&self) -> &N {
         &self.node_type
     }
@@ -315,7 +315,7 @@ pub struct Network<N: NodeType,
     active_link_count: usize,
 }
 
-impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + Sized + Ord = ExternalId> Network<N, L, EXTID> {
+impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + Sized + Ord> Network<N, L, EXTID> {
     pub fn new() -> Network<N, L, EXTID> {
         Network {
             nodes: Vec::new(),
@@ -547,7 +547,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
     /// # Danger!
     ///
     /// The external NodeIndex of the last node is changed!
-    /// 
+    ///
     /// # Complexity
     ///
     /// Worst case O(e), where `e` is the total number of edges in the graph.
