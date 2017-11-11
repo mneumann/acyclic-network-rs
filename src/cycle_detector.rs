@@ -45,8 +45,8 @@ impl<
         assert!(path_from != path_to);
 
         let nodes = self.nodes;
-        let mut nodes_to_visit = &mut self.nodes_to_visit;
-        let mut seen_nodes = &mut self.seen_nodes;
+        let nodes_to_visit = &mut self.nodes_to_visit;
+        let seen_nodes = &mut self.seen_nodes;
 
         if self.dirty {
             nodes_to_visit.clear();

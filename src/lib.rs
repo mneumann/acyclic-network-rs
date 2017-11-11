@@ -290,7 +290,7 @@ pub struct Node<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = External
     out_degree: u32,
 }
 
-impl<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord = ExternalId> Node<N, EXTID> {
+impl<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord> Node<N, EXTID> {
     pub fn node_type(&self) -> &N {
         &self.node_type
     }
@@ -332,7 +332,7 @@ pub struct Network<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + De
 impl<
     N: NodeType,
     L: Copy + Debug + Send + Sized,
-    EXTID: Copy + Debug + Send + Sized + Ord = ExternalId,
+    EXTID: Copy + Debug + Send + Sized + Ord,
 > Network<N, L, EXTID> {
     pub fn new() -> Network<N, L, EXTID> {
         Network {
