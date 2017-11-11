@@ -2,11 +2,12 @@ use fixedbitset::FixedBitSet;
 use std::fmt::Debug;
 use super::{LinkItem, LinkIter, Network, Node, NodeIndex, NodeType};
 
-pub struct CycleDetector<'a,
-                         N: NodeType + 'a,
-                         L: Copy + Debug + Send + Sized + 'a,
-                         EXTID: Copy + Debug + Send + Sized + Ord + 'a>
-{
+pub struct CycleDetector<
+    'a,
+    N: NodeType + 'a,
+    L: Copy + Debug + Send + Sized + 'a,
+    EXTID: Copy + Debug + Send + Sized + Ord + 'a,
+> {
     nodes: &'a [Node<N, EXTID>],
     links: &'a [LinkItem<L, EXTID>],
     nodes_to_visit: Vec<usize>,
@@ -14,7 +15,12 @@ pub struct CycleDetector<'a,
     dirty: bool,
 }
 
-impl<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a, EXTID: Copy + Debug + Send + Sized + Ord + 'a> CycleDetector<'a, N, L, EXTID> {
+impl<
+    'a,
+    N: NodeType + 'a,
+    L: Copy + Debug + Send + Sized + 'a,
+    EXTID: Copy + Debug + Send + Sized + Ord + 'a,
+> CycleDetector<'a, N, L, EXTID> {
     pub fn new(network: &'a Network<N, L, EXTID>) -> CycleDetector<'a, N, L, EXTID> {
         CycleDetector {
             nodes: &network.nodes,
@@ -28,7 +34,11 @@ impl<'a, N: NodeType + 'a, L: Copy + Debug + Send + Sized + 'a, EXTID: Copy + De
     // The algorithm used in `Network.link_would_cycle` and
     // `Network.find_random_unconnected_link_no_cycle`.  This is mostly extracted to avoid
     // repetetive memory allocations in `find_random_unconnected_link_no_cycle`.
-    pub fn link_would_cycle(&mut self, source_node_idx: NodeIndex, target_node_idx: NodeIndex) -> bool {
+    pub fn link_would_cycle(
+        &mut self,
+        source_node_idx: NodeIndex,
+        target_node_idx: NodeIndex,
+    ) -> bool {
         let path_from = target_node_idx.index();
         let path_to = source_node_idx.index();
 
