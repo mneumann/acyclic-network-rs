@@ -9,24 +9,25 @@ use rand::Rng;
 use std::fmt::Debug;
 
 pub trait NodeType: Clone + Debug + Send + Sized + PartialEq + Eq {
-    /// If the node allows incoming connections
+    /// Whether or not the node allows incoming connections
     fn accept_incoming_links(&self) -> bool;
 
-    /// If the node allows outgoing connections
+    /// Whether or not the node allows outgoing connections
     fn accept_outgoing_links(&self) -> bool;
 }
 
-/// Every node or link contains an external id. In contrast
+/// Every node or link contains an external id. This id is
+/// never modified by this library.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ExternalId(pub usize);
 
-/// New type wrapping a node index. The node index is
+/// Newtype wrapping a node index. The node index is
 /// used as an internal index into the node array.
 /// It can become unstable in case of removal of nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct NodeIndex(usize);
 
-/// New type wrapping a link index.
+/// Newtype wrapping a link index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LinkIndex(usize);
 
@@ -102,7 +103,6 @@ where
         }
     }
 }
-
 
 pub struct LinkRefIter<'a, N, L, EXTID>
 where
