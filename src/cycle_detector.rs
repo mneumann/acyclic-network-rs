@@ -54,8 +54,9 @@ impl<
         }
         self.dirty = true;
 
-        // We start at the from the target_node and iterate all paths from there. If we hit the source node,
-        // the addition of this link would lead towards a cycle. Otherwise not.
+        // We start at the from the target_node and iterate all paths from there.
+        // If we hit the source node, the addition of this link would lead towards
+        // a cycle. Otherwise not.
         nodes_to_visit.push(path_from);
         seen_nodes.insert(path_from);
 

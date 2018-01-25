@@ -179,12 +179,7 @@ impl<'a, N, L, EXTID> Iterator for LinkRefIter<'a, N, L, EXTID>
 where
     N: NodeType + 'a,
     L: Copy + Debug + Send + Sized + 'a,
-    EXTID: Copy
-        + Debug
-        + Send
-        + Sized
-        + Ord
-        + 'a,
+    EXTID: Copy + Debug + Send + Sized + Ord + 'a,
 {
     type Item = (LinkRefItem<'a, N, L, EXTID>);
 
@@ -322,18 +317,19 @@ impl<N: NodeType, EXTID: Copy + Debug + Send + Sized + Ord> Node<N, EXTID> {
 
 /// A directed, acylic network.
 #[derive(Clone, Debug)]
-pub struct Network<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + Sized + Ord = ExternalId> {
+pub struct Network<
+    N: NodeType,
+    L: Copy + Debug + Send + Sized,
+    EXTID: Copy + Debug + Send + Sized + Ord = ExternalId,
+> {
     nodes: Vec<Node<N, EXTID>>,
     links: Vec<LinkItem<L, EXTID>>, // XXX: Rename to link_items
     link_count: usize,
     active_link_count: usize,
 }
 
-impl<
-    N: NodeType,
-    L: Copy + Debug + Send + Sized,
-    EXTID: Copy + Debug + Send + Sized + Ord,
-> Network<N, L, EXTID> {
+impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + Sized + Ord>
+    Network<N, L, EXTID> {
     pub fn new() -> Network<N, L, EXTID> {
         Network {
             nodes: Vec::new(),
@@ -472,8 +468,6 @@ impl<
         return None;
     }
 
-
-
     /// # Complexity
     ///
     /// O(number of links)
@@ -606,7 +600,6 @@ impl<
         assert!(self.node_count() == node_count - 1);
     }
 
-
     /// Adds a new node to the network with type `node_type` and the associated
     /// id `external_node_id`. The `external_node_id` is stored in the node and
     /// can be retrieved later on.
@@ -630,7 +623,6 @@ impl<
         &self,
         rng: &mut R,
     ) -> Option<(NodeIndex, NodeIndex)> {
-
         let n = self.nodes.len();
 
         let idx = &|i, j| i * n + j;
@@ -758,15 +750,17 @@ impl<
     }
 
     pub fn first_link_of_node(&self, node_idx: NodeIndex) -> Option<&Link<L, EXTID>> {
-        self.node(node_idx).links.head.map(
-            |link_idx| self.link(link_idx),
-        )
+        self.node(node_idx)
+            .links
+            .head
+            .map(|link_idx| self.link(link_idx))
     }
 
     pub fn last_link_of_node(&self, node_idx: NodeIndex) -> Option<&Link<L, EXTID>> {
-        self.node(node_idx).links.tail.map(
-            |link_idx| self.link(link_idx),
-        )
+        self.node(node_idx)
+            .links
+            .tail
+            .map(|link_idx| self.link(link_idx))
     }
 
     fn append(&mut self, node_idx: NodeIndex, link: Link<L, EXTID>) -> LinkIndex {
@@ -851,8 +845,8 @@ impl<
         )
     }
 
-
-    // This will destroy the ordering relation of links. Do not mix with `add_link` or `add_link_with_active`.
+    // This will destroy the ordering relation of links.
+    // Do not mix with `add_link` or `add_link_with_active`.
 
     pub fn add_link_unordered(
         &mut self,
@@ -913,11 +907,8 @@ impl<
             active: active,
         };
 
-        match self.find_link_index_insert_before(
-            source_node_idx,
-            target_node_idx,
-            external_link_id,
-        ) {
+        match self.find_link_index_insert_before(source_node_idx, target_node_idx, external_link_id)
+        {
             None => {
                 if let Some(tail) = self.node(source_node_idx).links.tail {
                     // check if last element is equal
@@ -953,9 +944,6 @@ impl<
                         return new_link_idx;
                     }
                 }
-
-
-
             }
         }
     }
@@ -1149,7 +1137,7 @@ impl<
 #[cfg(test)]
 mod tests {
     use rand;
-    use super::{ExternalId, Network, NodeType, NodeIndex};
+    use super::{ExternalId, Network, NodeIndex, NodeType};
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     enum NodeT {
@@ -1487,7 +1475,6 @@ mod tests {
         assert_eq!(2, g.node(o1).in_degree());
         assert_eq!(0, g.node(o1).out_degree());
         assert_eq!(2, g.link_count());
-
 
         g.remove_all_inout_links_of_node(h1);
 
