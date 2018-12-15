@@ -6,8 +6,8 @@ license = "MIT"
 repository = "https://github.com/mneumann/acyclic-network-rs"
 description = "Acyclic network representation and construction"
 keywords = ["graph", "network", "net"]
-
 include = ["src/*.rs", "Cargo.toml", "LICENSE", "README.md"]
+edition = "2018"
 
 [dependencies]
 
