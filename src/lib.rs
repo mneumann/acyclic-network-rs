@@ -1,9 +1,9 @@
-extern crate fixedbitset;
-extern crate rand;
+
+use rand;
 
 mod cycle_detector;
 
-use cycle_detector::CycleDetector;
+use crate::cycle_detector::CycleDetector;
 use fixedbitset::FixedBitSet;
 use rand::Rng;
 use std::fmt::Debug;
@@ -417,7 +417,7 @@ impl<N: NodeType, L: Copy + Debug + Send + Sized, EXTID: Copy + Debug + Send + S
     #[inline]
     pub fn each_link_ref<F>(&self, mut f: F)
     where
-        F: FnMut(LinkRefItem<N, L, EXTID>),
+        F: FnMut(LinkRefItem<'_, N, L, EXTID>),
     {
         for link_item in &self.links[..] {
             f(LinkRefItem {
