@@ -63,8 +63,8 @@ where
 
 pub struct LinkIter<'a, L, EXTID>
 where
-    L: Copy + Debug + Send + Sized + 'a,
-    EXTID: Copy + Debug + Send + Sized + Ord + 'a,
+    L: Copy + Debug + Send + Sized,
+    EXTID: Copy + Debug + Send + Sized + Ord,
 {
     next_link_idx: Option<LinkIndex>,
     link_array: &'a [LinkItem<L, EXTID>],
@@ -72,8 +72,8 @@ where
 
 impl<'a, L, EXTID> LinkIter<'a, L, EXTID>
 where
-    L: Copy + Debug + Send + Sized + 'a,
-    EXTID: Copy + Debug + Send + Sized + Ord + 'a,
+    L: Copy + Debug + Send + Sized,
+    EXTID: Copy + Debug + Send + Sized + Ord,
 {
     fn new(link_idx_opt: Option<LinkIndex>, link_array: &'a [LinkItem<L, EXTID>]) -> Self {
         LinkIter {
@@ -85,8 +85,8 @@ where
 
 impl<'a, L, EXTID> Iterator for LinkIter<'a, L, EXTID>
 where
-    L: Copy + Debug + Send + Sized + 'a,
-    EXTID: Copy + Debug + Send + Sized + Ord + 'a,
+    L: Copy + Debug + Send + Sized,
+    EXTID: Copy + Debug + Send + Sized + Ord,
 {
     type Item = (LinkIndex, &'a Link<L, EXTID>);
 
@@ -106,9 +106,9 @@ where
 
 pub struct LinkRefIter<'a, N, L, EXTID>
 where
-    N: NodeType + 'a,
-    L: Copy + Debug + Send + Sized + 'a,
-    EXTID: Copy + Debug + Send + Sized + Ord + 'a,
+    N: NodeType,
+    L: Copy + Debug + Send + Sized,
+    EXTID: Copy + Debug + Send + Sized + Ord,
 {
     next_link_idx: Option<LinkIndex>,
     network: &'a Network<N, L, EXTID>,
@@ -118,9 +118,9 @@ where
 /// as such, it is read only.
 pub struct LinkRefItem<'a, N, L, EXTID>
 where
-    N: NodeType + 'a,
-    L: Copy + Debug + Send + Sized + 'a,
-    EXTID: Copy + Debug + Send + Sized + Ord + 'a,
+    N: NodeType,
+    L: Copy + Debug + Send + Sized,
+    EXTID: Copy + Debug + Send + Sized + Ord,
 {
     link: &'a Link<L, EXTID>,
     network: &'a Network<N, L, EXTID>,
@@ -128,9 +128,9 @@ where
 
 impl<'a, N, L, EXTID> LinkRefItem<'a, N, L, EXTID>
 where
-    N: NodeType + 'a,
-    L: Copy + Debug + Send + Sized + 'a,
-    EXTID: Copy + Debug + Send + Sized + Ord + 'a,
+    N: NodeType,
+    L: Copy + Debug + Send + Sized,
+    EXTID: Copy + Debug + Send + Sized + Ord,
 {
     pub fn link(&self) -> &Link<L, EXTID> {
         self.link
@@ -164,8 +164,8 @@ where
 impl<'a, N, L, EXTID> LinkRefIter<'a, N, L, EXTID>
 where
     N: NodeType + 'a,
-    L: Copy + Debug + Send + Sized + 'a,
-    EXTID: Copy + Debug + Send + Sized + Ord + 'a,
+    L: Copy + Debug + Send + Sized,
+    EXTID: Copy + Debug + Send + Sized + Ord,
 {
     fn new(link_idx_opt: Option<LinkIndex>, network: &'a Network<N, L, EXTID>) -> Self {
         LinkRefIter {
@@ -178,8 +178,8 @@ where
 impl<'a, N, L, EXTID> Iterator for LinkRefIter<'a, N, L, EXTID>
 where
     N: NodeType + 'a,
-    L: Copy + Debug + Send + Sized + 'a,
-    EXTID: Copy + Debug + Send + Sized + Ord + 'a,
+    L: Copy + Debug + Send + Sized,
+    EXTID: Copy + Debug + Send + Sized + Ord,
 {
     type Item = (LinkRefItem<'a, N, L, EXTID>);
 

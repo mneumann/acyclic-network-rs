@@ -4,9 +4,9 @@ use super::{LinkItem, LinkIter, Network, Node, NodeIndex, NodeType};
 
 pub struct CycleDetector<
     'a,
-    N: NodeType + 'a,
-    L: Copy + Debug + Send + Sized + 'a,
-    EXTID: Copy + Debug + Send + Sized + Ord + 'a,
+    N: NodeType,
+    L: Copy + Debug + Send + Sized,
+    EXTID: Copy + Debug + Send + Sized + Ord,
 > {
     nodes: &'a [Node<N, EXTID>],
     links: &'a [LinkItem<L, EXTID>],
@@ -17,9 +17,9 @@ pub struct CycleDetector<
 
 impl<
     'a,
-    N: NodeType + 'a,
-    L: Copy + Debug + Send + Sized + 'a,
-    EXTID: Copy + Debug + Send + Sized + Ord + 'a,
+    N: NodeType,
+    L: Copy + Debug + Send + Sized,
+    EXTID: Copy + Debug + Send + Sized + Ord,
 > CycleDetector<'a, N, L, EXTID> {
     pub fn new(network: &'a Network<N, L, EXTID>) -> CycleDetector<'a, N, L, EXTID> {
         CycleDetector {
